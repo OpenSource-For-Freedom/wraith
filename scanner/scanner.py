@@ -5,6 +5,7 @@ Called by ScanOrchestrator.cs as:
 
 Modes: persistence | yara | heuristics | events | npm | processes |
        network | winsec | rootkit | ads | browser | defender | credential | kev | all
+Flags: --enrich   query ThreatFox + MalwareBazaar for IOC reputation (requires internet)
 Output: single JSON blob to stdout.
 """
 
@@ -15,6 +16,19 @@ import os
 import traceback
 from pathlib import Path
 from typing import List, Dict, Any
+
+# ── Threat-intel enrichment & ATT&CK mapping ──────────────────────────────
+try:
+    from attack_mapper import tag_findings
+except ImportError:
+    def tag_findings(f):  # type: ignore
+        return f
+
+try:
+    from ioc_enricher import enrich_findings
+except ImportError:
+    def enrich_findings(f):  # type: ignore
+        return f
 
 
 # ── Output builder ────────────────────────────────────────────────────────
@@ -570,6 +584,12 @@ def main():
         "--hours", type=int, default=72, help="Event log lookback hours"
     )
     parser.add_argument("--rules", default="rules", help="YARA rules directory")
+    parser.add_argument(
+        "--enrich",
+        action="store_true",
+        default=False,
+        help="Query ThreatFox + MalwareBazaar for IOC corroboration (requires internet)",
+    )
     args = parser.parse_args()
 
     mode = args.mode.lower()
@@ -631,6 +651,17 @@ def main():
     except Exception as e:
         error = f"Unhandled error in mode '{mode}': {e}\n{traceback.format_exc()}"
         log(error)
+
+    # ── ATT&CK tagging (always, no network) ──────────────────────────────
+    findings = tag_findings(findings)
+
+    # ── IOC enrichment (opt-in, requires internet) ────────────────────────
+    if args.enrich:
+        log("IOC enrichment enabled — querying ThreatFox + MalwareBazaar...")
+        try:
+            findings = enrich_findings(findings)
+        except Exception as e:
+            log(f"IOC enrichment error (non-fatal): {e}")
 
     emit(findings, mode, error)
 
