@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -752,6 +753,281 @@ public partial class MainWindow : Window
                 new Duration(TimeSpan.FromSeconds(0.3)));
             SpinnerBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Header Scan Cutscene
+    //  Beam sweeps left→right repeatedly while scanning.
+    //  Hex/binary data fragments scroll right→left in the header.
+    //  Mini wraith silhouettes glide across at header scale.
+    //  Phase label cross-fades on each CurrentPhase change.
+    //  Progress bar fills in sync with ScanProgress.
+    // ══════════════════════════════════════════════════════════════════
+    private void StartHeaderScanAnimation()
+    {
+        HeaderScanOverlay.Opacity    = 1;
+        HeaderScanOverlay.Visibility = Visibility.Visible;
+
+        double w = Math.Max(PatronusCanvas.ActualWidth,  800);
+        double h = Math.Max(PatronusCanvas.ActualHeight, 160);
+        ScanBeam.Height = h;
+
+        // Repeating sweep: beam moves left → right in 2.4 s, opacity key-framed per sweep
+        var beamMove = new DoubleAnimation(-10, w + 10,
+            new Duration(TimeSpan.FromSeconds(2.4)))
+        { RepeatBehavior = RepeatBehavior.Forever };
+
+        var opKf = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
+        opKf.Duration = new Duration(TimeSpan.FromSeconds(2.4));
+        opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromPercent(0.00)));
+        opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0.90, KeyTime.FromPercent(0.05)));
+        opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0.90, KeyTime.FromPercent(0.90)));
+        opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromPercent(1.00)));
+
+        var sbBeam = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
+        sbBeam.Duration = new Duration(TimeSpan.FromSeconds(2.4));
+        Storyboard.SetTarget(beamMove, ScanBeam);
+        Storyboard.SetTargetProperty(beamMove, new PropertyPath(Canvas.LeftProperty));
+        Storyboard.SetTarget(opKf, ScanBeam);
+        Storyboard.SetTargetProperty(opKf, new PropertyPath(OpacityProperty));
+        sbBeam.Children.Add(beamMove);
+        sbBeam.Children.Add(opKf);
+        _headerBeamSb = sbBeam;
+        sbBeam.Begin();
+
+        _headerDataTick = 0;
+        _headerDataTimer.Interval = TimeSpan.FromMilliseconds(280);
+        _headerDataTimer.Tick    += HeaderDataTimer_Tick;
+        _headerDataTimer.Start();
+
+        if (DataContext is WRAITH.ViewModels.MainViewModel vm)
+            UpdateHeaderPhase(vm.CurrentPhase);
+    }
+
+    private void StopHeaderScanAnimation()
+    {
+        _headerDataTimer.Stop();
+        _headerDataTimer.Tick -= HeaderDataTimer_Tick;
+        _headerBeamSb?.Stop();
+        _headerBeamSb = null;
+
+        var fadeOut = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromSeconds(0.45)));
+        fadeOut.Completed += (_, _) =>
+        {
+            HeaderScanOverlay.Visibility = Visibility.Collapsed;
+            // Remove any dynamically-added fragments/wraithlets but keep named XAML elements
+            var toRemove = HeaderScanOverlay.Children
+                .OfType<UIElement>()
+                .Where(c => c != ScanBeam && c != HeaderPhaseLabel && c != HeaderProgressBar)
+                .ToList();
+            foreach (var el in toRemove) HeaderScanOverlay.Children.Remove(el);
+            ScanBeam.Opacity        = 0;
+            HeaderPhaseLabel.Opacity = 0;
+            HeaderProgressBar.Width  = 0;
+        };
+        HeaderScanOverlay.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void HeaderDataTimer_Tick(object? sender, EventArgs e)
+    {
+        _headerDataTick++;
+        SpawnDataFragment();
+        if (_headerDataTick % 6 == 0) SpawnHeaderWraithlet();
+
+        if (DataContext is WRAITH.ViewModels.MainViewModel vm)
+        {
+            double totalW = Math.Max(PatronusCanvas.ActualWidth, 800);
+            HeaderProgressBar.Width = totalW * (vm.ScanProgress / 100.0);
+        }
+    }
+
+    private void SpawnDataFragment()
+    {
+        double hH = Math.Max(PatronusCanvas.ActualHeight, 160);
+        double hW = Math.Max(PatronusCanvas.ActualWidth,  800);
+
+        double y = _headerRng.NextDouble() > 0.4
+            ? _headerRng.NextDouble() * (hH - 18)
+            : _headerRng.Next(88, (int)(hH - 10));
+
+        string[] fragments =
+        [
+            "FF D8 FF", "4D 5A 90", "0xCA FE", "PE32+",  "YARA",
+            "0xFF",     "SUB EAX",  "JMP 0x",  "CALL",   "MOV EDX",
+            "SHA256:",  "HKLM\\",   "\\RUN",   "cmd.exe","regsvr32",
+            "0x4C",     "SIG!!",    "HOOK",    "INJECT",  "DLL"
+        ];
+
+        bool isGold = _headerRng.NextDouble() > 0.72;
+        var frag = new TextBlock
+        {
+            Text       = fragments[_headerRng.Next(fragments.Length)],
+            FontSize   = _headerRng.NextDouble() * 7 + 8,
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            Foreground = isGold
+                ? new SolidColorBrush(Color.FromArgb(150, 212, 175,  55))
+                : new SolidColorBrush(Color.FromArgb(160, 168, 200, 232)),
+            Opacity = 0
+        };
+        Canvas.SetLeft(frag, hW + 10);
+        Canvas.SetTop(frag,  y);
+        HeaderScanOverlay.Children.Add(frag);
+
+        double dur   = _headerRng.NextDouble() * 1.6 + 0.9;
+        double delay = _headerRng.NextDouble() * 0.25;
+
+        var sb = new Storyboard();
+        var fadeIn  = new DoubleAnimation(0, 0.85, new Duration(TimeSpan.FromSeconds(0.18)))
+                      { BeginTime = TimeSpan.FromSeconds(delay) };
+        var move    = new DoubleAnimation(hW + 10, -130, new Duration(TimeSpan.FromSeconds(dur)))
+                      { BeginTime = TimeSpan.FromSeconds(delay),
+                        EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
+        var fadeOut = new DoubleAnimation(0.85, 0, new Duration(TimeSpan.FromSeconds(0.25)))
+                      { BeginTime = TimeSpan.FromSeconds(delay + dur * 0.72) };
+        foreach (var (anim, prop) in new (Timeline, PropertyPath)[]
+        {
+            (fadeIn,  new PropertyPath(OpacityProperty)),
+            (move,    new PropertyPath(Canvas.LeftProperty)),
+            (fadeOut, new PropertyPath(OpacityProperty))
+        })
+        {
+            Storyboard.SetTarget(anim, frag);
+            Storyboard.SetTargetProperty(anim, prop);
+            sb.Children.Add(anim);
+        }
+        sb.Duration   = new Duration(TimeSpan.FromSeconds(delay + dur + 0.05));
+        sb.Completed += (_, _) => { try { HeaderScanOverlay.Children.Remove(frag); } catch { } };
+        sb.Begin();
+    }
+
+    private void SpawnHeaderWraithlet()
+    {
+        double hH    = Math.Max(PatronusCanvas.ActualHeight, 160);
+        double hW    = Math.Max(PatronusCanvas.ActualWidth,  800);
+        double scale = (hH * 0.70) / 155.0;
+        double bW    = 110 * scale;
+        bool   ltr   = _headerRng.NextDouble() > 0.35;
+        double startX = ltr ? -(bW + 10) : hW + 10;
+        double endX   = ltr ?  hW + 10   : -(bW + 10);
+        double yPos   = _headerRng.NextDouble() * (hH * 0.6) - 5;
+        double dur    = _headerRng.NextDouble() * 2.2 + 2.0;
+
+        Color[] palette =
+        [
+            Color.FromRgb(168, 200, 232), Color.FromRgb(176, 140, 240),
+            Color.FromRgb(140, 180, 255), Color.FromRgb(212, 175,  55)
+        ];
+        Color gc = palette[_headerRng.Next(palette.Length)];
+
+        System.Windows.Point P(double x, double y) => new(x * scale, y * scale);
+
+        var geo = new StreamGeometry();
+        using (var ctx = geo.Open())
+        {
+            ctx.BeginFigure(P(55, 0), true, true);
+            ctx.BezierTo(P(38, 4), P(20, 14), P(20, 32), true, true);
+            ctx.LineTo(P(  4,  54), true, false); ctx.LineTo(P( 14,  92), true, false);
+            ctx.LineTo(P(  1, 114), true, false); ctx.LineTo(P( 16,  98), true, false);
+            ctx.LineTo(P(  4, 134), true, false); ctx.LineTo(P( 22, 114), true, false);
+            ctx.LineTo(P( 12, 152), true, false); ctx.LineTo(P( 32, 130), true, false);
+            ctx.LineTo(P( 55, 148), true, false);
+            ctx.LineTo(P( 78, 130), true, false); ctx.LineTo(P( 98, 152), true, false);
+            ctx.LineTo(P( 88, 114), true, false); ctx.LineTo(P(106, 134), true, false);
+            ctx.LineTo(P( 94,  98), true, false); ctx.LineTo(P(109, 114), true, false);
+            ctx.LineTo(P( 96,  92), true, false); ctx.LineTo(P(106,  54), true, false);
+            ctx.BezierTo(P(90, 14), P(72, 4), P(55, 0), true, true);
+        }
+        geo.Freeze();
+
+        var fill = new RadialGradientBrush
+        {
+            Center = new System.Windows.Point(0.50, 0.18),
+            GradientOrigin = new System.Windows.Point(0.50, 0.14),
+            RadiusX = 0.62, RadiusY = 0.58
+        };
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(210, gc.R, gc.G, gc.B), 0.00));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(110, gc.R, gc.G, gc.B), 0.45));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+
+        System.Windows.Media.Transform bodyTx =
+            ltr ? Transform.Identity : new ScaleTransform(-1, 1, 55 * scale, 0);
+
+        var body = new Path
+        {
+            Data = geo, Fill = fill,
+            Stroke = new SolidColorBrush(Color.FromArgb(35, gc.R, gc.G, gc.B)),
+            StrokeThickness = 0.6, RenderTransform = bodyTx,
+            Effect = new DropShadowEffect { Color = gc, BlurRadius = 12 * scale, ShadowDepth = 0, Opacity = 0.70 }
+        };
+
+        var container = new Canvas { Width = bW * 2, Height = hH, Opacity = 0 };
+        container.Children.Add(body);
+
+        foreach (double eyeNX in new[] { 36.0, 74.0 })
+        {
+            double ex = ltr ? eyeNX * scale : (110.0 - eyeNX) * scale;
+            double ey = 22.0 * scale;
+            double er = 2.8 * scale;
+            var ef = new RadialGradientBrush();
+            ef.GradientStops.Add(new GradientStop(Colors.White,                                          0.00));
+            ef.GradientStops.Add(new GradientStop(Color.FromArgb(215, gc.R, gc.G, gc.B), 0.45));
+            ef.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+            var eye = new Ellipse
+            {
+                Width = er * 2, Height = er * 1.3, Fill = ef,
+                Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 6 * scale, ShadowDepth = 0, Opacity = 0.9 }
+            };
+            Canvas.SetLeft(eye, ex - er); Canvas.SetTop(eye, ey - er * 0.65);
+            eye.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0.5, 1.0, new Duration(TimeSpan.FromSeconds(_headerRng.NextDouble() * 0.3 + 0.3)))
+                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
+                  BeginTime = TimeSpan.FromSeconds(_headerRng.NextDouble() * 0.3) });
+            container.Children.Add(eye);
+        }
+
+        Canvas.SetLeft(container, startX);
+        Canvas.SetTop(container, yPos);
+        HeaderScanOverlay.Children.Add(container);
+
+        double travel = endX - startX;
+        var xAnim = new DoubleAnimationUsingKeyFrames();
+        xAnim.Duration = new Duration(TimeSpan.FromSeconds(dur));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX,                 KeyTime.FromPercent(0.00)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel * 0.38, KeyTime.FromPercent(0.14),
+            new QuarticEase { EasingMode = EasingMode.EaseOut }));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel * 0.58, KeyTime.FromPercent(0.42)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel * 0.72, KeyTime.FromPercent(0.65)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel * 0.85, KeyTime.FromPercent(0.84),
+            new QuarticEase { EasingMode = EasingMode.EaseIn }));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(endX,                   KeyTime.FromPercent(1.00)));
+
+        var opAnim = new DoubleAnimationUsingKeyFrames();
+        opAnim.Duration = new Duration(TimeSpan.FromSeconds(dur));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromPercent(0.00)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0.78, KeyTime.FromPercent(0.12)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0.78, KeyTime.FromPercent(0.82)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromPercent(1.00)));
+        opAnim.Completed += (_, _) => { try { HeaderScanOverlay.Children.Remove(container); } catch { } };
+
+        container.BeginAnimation(Canvas.LeftProperty,       xAnim);
+        container.BeginAnimation(UIElement.OpacityProperty, opAnim);
+    }
+
+    /// <summary>Cross-fades the header phase label to the new phase name.</summary>
+    private void UpdateHeaderPhase(string phase)
+    {
+        if (string.IsNullOrWhiteSpace(phase)) return;
+        var outAnim = new DoubleAnimation(HeaderPhaseLabel.Opacity, 0,
+            new Duration(TimeSpan.FromSeconds(0.16)));
+        outAnim.Completed += (_, _) =>
+        {
+            HeaderPhaseLabel.Text = $"[ {phase.ToUpperInvariant()} ]";
+            double h = Math.Max(PatronusCanvas.ActualHeight, 160);
+            Canvas.SetTop(HeaderPhaseLabel, h - 34);
+            HeaderPhaseLabel.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0, 0.88, new Duration(TimeSpan.FromSeconds(0.28))));
+        };
+        HeaderPhaseLabel.BeginAnimation(OpacityProperty, outAnim);
     }
 
     // ── Context menu copy actions ─────────────────────────────────────────
