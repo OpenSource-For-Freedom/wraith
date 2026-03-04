@@ -10,6 +10,35 @@ A native Windows threat-hunting application that orchestrates 14 scan modules ac
 
 ---
 
+## UI Walkthrough
+
+### Dashboard — live threat feed
+<p align="center">
+  <img src="WRAITH/Assets/screenshot.png" alt="WRAITH dashboard showing live threat findings" width="800"/>
+</p>
+
+Findings stream in as each module completes. Every row shows severity, module, finding name, path/process, and entropy score. Click any row to expand details. Use the toolbar to **kill a live process**, **export the report**, or **clear the list**.
+
+---
+
+### Severity filter & scan controls
+<p align="center">
+  <img src="WRAITH/Assets/dropdown.png" alt="WRAITH severity filter dropdown" width="800"/>
+</p>
+
+Filter the feed by severity (CRITICAL → INFO) in real time without re-running the scan. Scan-root, look-back window, and scan mode are all set before clicking **EXPECTO PATRONUM**.
+
+---
+
+### Full results view
+<p align="center">
+  <img src="WRAITH/Assets/screenshot_2.png" alt="WRAITH full results view" width="800"/>
+</p>
+
+After the scan completes the summary bar shows total counts per severity tier. Export to **JSON**, **CSV**, or a self-contained **HTML** report from the toolbar at any time.
+
+---
+
 ## Requirements
 
 | Dependency | Minimum | Notes |
