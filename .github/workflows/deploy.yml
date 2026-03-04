@@ -21,8 +21,6 @@ on:
 
 permissions:
   contents:          write   # create releases, upload assets
-  id-token:          write   # SLSA provenance & SBOM attestation signing
-  attestations:      write   # artifact attestation API
   security-events:   write   # upload SARIF to GitHub Security tab
 
 jobs:
@@ -315,15 +313,7 @@ jobs:
           $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
           Write-Host "Created ${zip}  (${size} MB)"
 
-      # ── 11. SLSA build provenance attestation ──────────────────────────────
-      #   Cryptographically links this ZIP to the exact commit + workflow run
-      #   that produced it. Verifiable with: gh attestation verify <zip>
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: ${{ steps.ver.outputs.zip }}
-
-      # ── 12. Create / update GitHub Release ────────────────────────────────
+      # ── 11. Create / update GitHub Release ─────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
