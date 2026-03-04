@@ -86,7 +86,9 @@
            ROW 1: Header — Patronus spell canvas + title
            ══════════════════════════════════════════════════ -->
       <Border Grid.Row="1" Background="{StaticResource BrHeaderBackground}" ClipToBounds="True">
-        <!-- Animated Patronus rings — controlled from code-behind -->
+        <!-- Grid lets us layer the scan overlay on top of the patronus canvas -->
+        <Grid>
+        <!-- Patronus rings + title canvas -->
         <Canvas x:Name="PatronusCanvas" ClipToBounds="True">
 
           <!-- Static star field -->
@@ -186,6 +188,64 @@
           </StackPanel>
 
         </Canvas>
+
+        <!-- ══════════════════════════════════════════════════
+             HEADER SCAN OVERLAY — shown only while scanning.
+             Sweeping beam + data fragments + phase label.
+             All clipped to the header row. Code-behind driven.
+             ══════════════════════════════════════════════════ -->
+        <Canvas x:Name="HeaderScanOverlay"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+                ClipToBounds="True">
+
+          <!-- Vertical sweep beam -->
+          <Rectangle x:Name="ScanBeam"
+                     Width="3" Height="160"
+                     Canvas.Top="0" Canvas.Left="-10"
+                     Opacity="0">
+            <Rectangle.Fill>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#00A8C8E8" Offset="0.0"/>
+                <GradientStop Color="#99A8C8E8" Offset="0.3"/>
+                <GradientStop Color="#FFA8C8E8" Offset="0.5"/>
+                <GradientStop Color="#99A8C8E8" Offset="0.7"/>
+                <GradientStop Color="#00A8C8E8" Offset="1.0"/>
+              </LinearGradientBrush>
+            </Rectangle.Fill>
+            <Rectangle.Effect>
+              <BlurEffect Radius="5"/>
+            </Rectangle.Effect>
+          </Rectangle>
+
+          <!-- Phase name label — cross-fades on each new scan phase -->
+          <TextBlock x:Name="HeaderPhaseLabel"
+                     Canvas.Left="44" Canvas.Top="118"
+                     FontSize="12" FontWeight="SemiBold"
+                     FontFamily="Consolas"
+                     Foreground="#CCA8C8E8"
+                     Opacity="0">
+            <TextBlock.Effect>
+              <DropShadowEffect Color="#A8C8E8" BlurRadius="10"
+                                ShadowDepth="0" Opacity="0.85"/>
+            </TextBlock.Effect>
+          </TextBlock>
+
+          <!-- Scan progress indicator line at the bottom of the header -->
+          <Rectangle x:Name="HeaderProgressBar"
+                     Canvas.Left="0" Canvas.Top="156"
+                     Height="2" Width="0" Opacity="0.7">
+            <Rectangle.Fill>
+              <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                <GradientStop Color="#007B3FE4" Offset="0.0"/>
+                <GradientStop Color="#FFA8C8E8" Offset="0.6"/>
+                <GradientStop Color="#FFD4AF37" Offset="1.0"/>
+              </LinearGradientBrush>
+            </Rectangle.Fill>
+          </Rectangle>
+
+        </Canvas>
+        </Grid>
       </Border>
 
       <!-- ══════════════════════════════════════════════════

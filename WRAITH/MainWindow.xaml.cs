@@ -19,7 +19,11 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _ghostTimer = new();
     private readonly Random          _ghostRng   = new();
     private          int             _ghostActive = 0;   // active pass count
-
+    // ── Header scan animation ───────────────────────────────────────────
+    private readonly DispatcherTimer _headerDataTimer  = new();
+    private readonly Random          _headerRng        = new();
+    private          Storyboard?     _headerBeamSb;
+    private          int             _headerDataTick   = 0;
     // ── Win32 for window resize via custom chrome ───────────────────────
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -62,6 +66,12 @@ public partial class MainWindow : Window
                 }
                 else StopPatronusAnimation();
             });
+        }
+        else if (e.PropertyName == nameof(MainViewModel.CurrentPhase))
+        {
+            var vm = (MainViewModel)DataContext;
+            if (vm.IsScanning)
+                Dispatcher.Invoke(() => UpdateHeaderPhase(vm.CurrentPhase));
         }
     }
 
@@ -141,6 +151,9 @@ public partial class MainWindow : Window
 
         // Start ambient ghost wraith sweeps
         StartGhostAnimation();
+
+        // Start header scan cutscene
+        StartHeaderScanAnimation();
     }
 
     private void StopPatronusAnimation()
@@ -157,6 +170,9 @@ public partial class MainWindow : Window
 
         // Stop ghost sweeps
         StopGhostAnimation();
+
+        // Stop header scan cutscene
+        StopHeaderScanAnimation();
     }
 
     private void RepositionRings(object? s, SizeChangedEventArgs? e)
