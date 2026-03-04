@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="180"/>
+</p>
+
 # W R A I T H
 **Windows Runtime Analysis & Intrusion Threat Hunter**  
 *"Expecto Patronum"*
