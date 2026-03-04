@@ -31,9 +31,9 @@ from typing import List, Dict, Any
 BENIGN_STREAMS = {
     ":$DATA",
     "Zone.Identifier",
-    "SummaryInformation",           # Office legacy
+    "SummaryInformation",  # Office legacy
     "DocumentSummaryInformation",
-    "com.dropbox.attributes",       # Dropbox
+    "com.dropbox.attributes",  # Dropbox
     "com.apple.quarantine",
     "AFP_AfpInfo",
     "SmartScreen",
@@ -44,21 +44,38 @@ BENIGN_STREAMS = {
     "Win32App_1",
     "Win32App_2",
     "Win32App_3",
-    "StreamedFileState",            # Windows Shell: incomplete/streamed download marker
-    "ThumbnailCacheIndex",          # Explorer thumbnail cache
-    "favicon",                      # Browser favicon cache
-    "KernelValidation",             # Windows kernel file validation
-    "CERTIFICATE",                  # Signed file certificate block
+    "StreamedFileState",  # Windows Shell: incomplete/streamed download marker
+    "ThumbnailCacheIndex",  # Explorer thumbnail cache
+    "favicon",  # Browser favicon cache
+    "KernelValidation",  # Windows kernel file validation
+    "CERTIFICATE",  # Signed file certificate block
     "{4c8cc155-6c1e-11d1-8e41-00c04fb9386d}",  # NTFS crypto key ref
-    "LjpMetadataAttributes",        # LibreOffice/OpenOffice
+    "LjpMetadataAttributes",  # LibreOffice/OpenOffice
 }
 
 # Extensions that should NEVER appear as ADS names on normal files
 SUSPICIOUS_STREAM_EXTENSIONS = (
-    ".exe", ".dll", ".ps1", ".bat", ".cmd", ".vbs", ".js",
-    ".jar", ".hta", ".scr", ".pif", ".com", ".cpl", ".msi",
-    ".py", ".rb", ".sh", ".elf", ".so",
+    ".exe",
+    ".dll",
+    ".ps1",
+    ".bat",
+    ".cmd",
+    ".vbs",
+    ".js",
+    ".jar",
+    ".hta",
+    ".scr",
+    ".pif",
+    ".com",
+    ".cpl",
+    ".msi",
+    ".py",
+    ".rb",
+    ".sh",
+    ".elf",
+    ".so",
 )
+
 
 # User-writable temp / landing zones where malware drops payloads
 def _get_scan_dirs() -> List[Path]:
@@ -78,14 +95,18 @@ def _get_scan_dirs() -> List[Path]:
         if p.exists():
             dirs.append(p)
     # Public dirs
-    for pub in (r"C:\Users\Public", r"C:\Users\Public\Desktop",
-                r"C:\Users\Public\Downloads"):
+    for pub in (
+        r"C:\Users\Public",
+        r"C:\Users\Public\Desktop",
+        r"C:\Users\Public\Downloads",
+    ):
         p = Path(pub)
         if p.exists():
             dirs.append(p)
     # Startup folders
     startup = Path(
-        os.environ.get("APPDATA", "") + r"\Microsoft\Windows\Start Menu\Programs\Startup"
+        os.environ.get("APPDATA", "")
+        + r"\Microsoft\Windows\Start Menu\Programs\Startup"
     )
     if startup.exists():
         dirs.append(startup)
@@ -101,11 +122,14 @@ def _get_scan_dirs() -> List[Path]:
 # Helpers
 # ──────────────────────────────────────────────
 
+
 def _run_ps(cmd: str, timeout: int = 30) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         return result.stdout.strip()
     except Exception:
@@ -155,6 +179,7 @@ def _read_stream_bytes(filepath: str, stream: str, max_bytes: int = 512) -> byte
         return b""
     try:
         import base64
+
         return base64.b64decode(b64)
     except Exception:
         return b""
@@ -163,6 +188,7 @@ def _read_stream_bytes(filepath: str, stream: str, max_bytes: int = 512) -> byte
 # ──────────────────────────────────────────────
 # Check 1 + 2 + 4 + 5: ADS in hot directories
 # ──────────────────────────────────────────────
+
 
 def check_ads_in_hot_dirs() -> List[Dict]:
     """
@@ -176,8 +202,8 @@ def check_ads_in_hot_dirs() -> List[Dict]:
         streams = _get_ads_for_dir(directory, recurse=False)
         for item in streams:
             stream_name = str(item.get("Stream", ""))
-            filepath    = str(item.get("FileName", ""))
-            length      = int(item.get("Length", 0) or 0)
+            filepath = str(item.get("FileName", ""))
+            length = int(item.get("Length", 0) or 0)
 
             # Skip always-benign streams
             if stream_name in BENIGN_STREAMS:
@@ -186,71 +212,79 @@ def check_ads_in_hot_dirs() -> List[Dict]:
             # === Heuristic A: stream extension looks like an executable ===
             lower_stream = stream_name.lower()
             if any(lower_stream.endswith(ext) for ext in SUSPICIOUS_STREAM_EXTENSIONS):
-                findings.append({
-                    "title":       f"Executable-named ADS: {stream_name}",
-                    "path":        f"{filepath}:{stream_name}",
-                    "reason":      (
-                        f"File '{filepath}' has an Alternate Data Stream named "
-                        f"'{stream_name}' ({length} bytes). Stream names ending in "
-                        "executable extensions (.exe, .dll, .ps1, etc.) are used by "
-                        "malware to hide binaries inside innocent-looking files. "
-                        "NTFS ADS are invisible to Explorer and most file managers."
-                    ),
-                    "severity":    "CRITICAL",
-                    "category":    "ads",
-                    "subcategory": "exec_stream",
-                })
+                findings.append(
+                    {
+                        "title": f"Executable-named ADS: {stream_name}",
+                        "path": f"{filepath}:{stream_name}",
+                        "reason": (
+                            f"File '{filepath}' has an Alternate Data Stream named "
+                            f"'{stream_name}' ({length} bytes). Stream names ending in "
+                            "executable extensions (.exe, .dll, .ps1, etc.) are used by "
+                            "malware to hide binaries inside innocent-looking files. "
+                            "NTFS ADS are invisible to Explorer and most file managers."
+                        ),
+                        "severity": "CRITICAL",
+                        "category": "ads",
+                        "subcategory": "exec_stream",
+                    }
+                )
                 continue
 
             # === Heuristic B: large stream (>50 KB) ===
             if length > 51200:
-                findings.append({
-                    "title":       f"Large ADS ({length // 1024} KB): {stream_name}",
-                    "path":        f"{filepath}:{stream_name}",
-                    "reason":      (
-                        f"File '{filepath}' has a {length // 1024} KB Alternate Data "
-                        f"Stream named '{stream_name}'. Streams larger than 50 KB in "
-                        "temp or user-writable directories often conceal full payloads, "
-                        "archives, or encrypted shellcode."
-                    ),
-                    "severity":    "HIGH",
-                    "category":    "ads",
-                    "subcategory": "large_stream",
-                })
+                findings.append(
+                    {
+                        "title": f"Large ADS ({length // 1024} KB): {stream_name}",
+                        "path": f"{filepath}:{stream_name}",
+                        "reason": (
+                            f"File '{filepath}' has a {length // 1024} KB Alternate Data "
+                            f"Stream named '{stream_name}'. Streams larger than 50 KB in "
+                            "temp or user-writable directories often conceal full payloads, "
+                            "archives, or encrypted shellcode."
+                        ),
+                        "severity": "HIGH",
+                        "category": "ads",
+                        "subcategory": "large_stream",
+                    }
+                )
                 continue
 
             # === Heuristic C: any unknown stream in startup folders ===
             fp_lower = filepath.lower()
             if "startup" in fp_lower or "start menu" in fp_lower:
-                findings.append({
-                    "title":       f"ADS in Startup folder: {stream_name}",
-                    "path":        f"{filepath}:{stream_name}",
-                    "reason":      (
-                        f"A startup folder entry '{filepath}' has an Alternate Data "
-                        f"Stream '{stream_name}' ({length} bytes). Persistence via ADS "
-                        "in the startup folder allows code execution at logon while "
-                        "remaining invisible in the folder's normal directory listing."
-                    ),
-                    "severity":    "HIGH",
-                    "category":    "ads",
-                    "subcategory": "startup_ads",
-                })
+                findings.append(
+                    {
+                        "title": f"ADS in Startup folder: {stream_name}",
+                        "path": f"{filepath}:{stream_name}",
+                        "reason": (
+                            f"A startup folder entry '{filepath}' has an Alternate Data "
+                            f"Stream '{stream_name}' ({length} bytes). Persistence via ADS "
+                            "in the startup folder allows code execution at logon while "
+                            "remaining invisible in the folder's normal directory listing."
+                        ),
+                        "severity": "HIGH",
+                        "category": "ads",
+                        "subcategory": "startup_ads",
+                    }
+                )
                 continue
 
             # === Heuristic D: any other unknown stream in hot dirs ===
-            findings.append({
-                "title":       f"Unknown ADS: {stream_name}",
-                "path":        f"{filepath}:{stream_name}",
-                "reason":      (
-                    f"File '{filepath}' has an Alternate Data Stream '{stream_name}' "
-                    f"({length} bytes) in a user-writable directory. Legitimate ADS "
-                    "are limited to Zone.Identifier and a few application-managed "
-                    "streams. Unknown streams in temp/download dirs warrant inspection."
-                ),
-                "severity":    "MEDIUM",
-                "category":    "ads",
-                "subcategory": "unknown_stream",
-            })
+            findings.append(
+                {
+                    "title": f"Unknown ADS: {stream_name}",
+                    "path": f"{filepath}:{stream_name}",
+                    "reason": (
+                        f"File '{filepath}' has an Alternate Data Stream '{stream_name}' "
+                        f"({length} bytes) in a user-writable directory. Legitimate ADS "
+                        "are limited to Zone.Identifier and a few application-managed "
+                        "streams. Unknown streams in temp/download dirs warrant inspection."
+                    ),
+                    "severity": "MEDIUM",
+                    "category": "ads",
+                    "subcategory": "unknown_stream",
+                }
+            )
 
     return findings
 
@@ -258,6 +292,7 @@ def check_ads_in_hot_dirs() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 3: System32 binaries with Zone.Identifier
 # ──────────────────────────────────────────────
+
 
 def check_system32_zone_id() -> List[Dict]:
     """
@@ -287,23 +322,25 @@ def check_system32_zone_id() -> List[Dict]:
             items = [items]
         for item in items[:20]:  # cap
             filepath = str(item.get("FileName", ""))
-            length   = int(item.get("Length", 0) or 0)
+            length = int(item.get("Length", 0) or 0)
             if filepath:
-                findings.append({
-                    "title":       f"System32 binary has Zone.Identifier: {Path(filepath).name}",
-                    "path":        filepath,
-                    "reason":      (
-                        f"'{filepath}' has a Zone.Identifier ADS ({length} bytes), "
-                        "indicating it was downloaded from the internet. Legitimate "
-                        "Windows system binaries in System32 are installed via Windows "
-                        "Update and never carry this mark. This indicates the binary "
-                        "was replaced with a file downloaded from an external source — "
-                        "a strong Trojan/backdoor indicator."
-                    ),
-                    "severity":    "CRITICAL",
-                    "category":    "ads",
-                    "subcategory": "system32_zone_id",
-                })
+                findings.append(
+                    {
+                        "title": f"System32 binary has Zone.Identifier: {Path(filepath).name}",
+                        "path": filepath,
+                        "reason": (
+                            f"'{filepath}' has a Zone.Identifier ADS ({length} bytes), "
+                            "indicating it was downloaded from the internet. Legitimate "
+                            "Windows system binaries in System32 are installed via Windows "
+                            "Update and never carry this mark. This indicates the binary "
+                            "was replaced with a file downloaded from an external source — "
+                            "a strong Trojan/backdoor indicator."
+                        ),
+                        "severity": "CRITICAL",
+                        "category": "ads",
+                        "subcategory": "system32_zone_id",
+                    }
+                )
     except Exception:
         pass
 
@@ -313,6 +350,7 @@ def check_system32_zone_id() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 6: ADS on directories
 # ──────────────────────────────────────────────
+
 
 def check_directory_ads() -> List[Dict]:
     """
@@ -352,20 +390,22 @@ def check_directory_ads() -> List[Dict]:
                 if stream in BENIGN_STREAMS:
                     continue
                 length = int(item.get("Length", 0) or 0)
-                findings.append({
-                    "title":       f"ADS on directory: {stream}",
-                    "path":        f"{dpath}:{stream}",
-                    "reason":      (
-                        f"Directory '{dpath}' has an Alternate Data Stream '{stream}' "
-                        f"({length} bytes). Directory ADS are not created by any "
-                        "legitimate Windows component. They are used by rootkits and "
-                        "advanced malware to store hidden configuration or payloads "
-                        "that survive typical file system scans."
-                    ),
-                    "severity":    "HIGH",
-                    "category":    "ads",
-                    "subcategory": "directory_ads",
-                })
+                findings.append(
+                    {
+                        "title": f"ADS on directory: {stream}",
+                        "path": f"{dpath}:{stream}",
+                        "reason": (
+                            f"Directory '{dpath}' has an Alternate Data Stream '{stream}' "
+                            f"({length} bytes). Directory ADS are not created by any "
+                            "legitimate Windows component. They are used by rootkits and "
+                            "advanced malware to store hidden configuration or payloads "
+                            "that survive typical file system scans."
+                        ),
+                        "severity": "HIGH",
+                        "category": "ads",
+                        "subcategory": "directory_ads",
+                    }
+                )
         except Exception:
             pass
 
@@ -375,6 +415,7 @@ def check_directory_ads() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 7: Recently modified system binaries
 # ──────────────────────────────────────────────
+
 
 def check_recently_modified_sys_binaries() -> List[Dict]:
     """
@@ -394,19 +435,42 @@ def check_recently_modified_sys_binaries() -> List[Dict]:
     # Key system binaries to spot-check (not scanning all ~4000 files)
     WATCHED_BINARIES = [
         # Core process infrastructure
-        "ntdll.dll", "kernel32.dll", "kernelbase.dll", "user32.dll",
-        "advapi32.dll", "sechost.dll", "rpcrt4.dll", "combase.dll",
+        "ntdll.dll",
+        "kernel32.dll",
+        "kernelbase.dll",
+        "user32.dll",
+        "advapi32.dll",
+        "sechost.dll",
+        "rpcrt4.dll",
+        "combase.dll",
         # Authentication
-        "lsass.exe", "lsasrv.dll", "msv1_0.dll", "kerberos.dll",
-        "wdigest.dll", "tspkg.dll", "pku2u.dll", "livessp.dll",
-        "samsrv.dll", "samlib.dll",
+        "lsass.exe",
+        "lsasrv.dll",
+        "msv1_0.dll",
+        "kerberos.dll",
+        "wdigest.dll",
+        "tspkg.dll",
+        "pku2u.dll",
+        "livessp.dll",
+        "samsrv.dll",
+        "samlib.dll",
         # Core Windows processes
-        "svchost.exe", "services.exe", "winlogon.exe", "wininit.exe",
-        "csrss.exe", "smss.exe", "explorer.exe",
+        "svchost.exe",
+        "services.exe",
+        "winlogon.exe",
+        "wininit.exe",
+        "csrss.exe",
+        "smss.exe",
+        "explorer.exe",
         # Network
-        "netlogon.dll", "winsock.dll", "ws2_32.dll", "mswsock.dll",
+        "netlogon.dll",
+        "winsock.dll",
+        "ws2_32.dll",
+        "mswsock.dll",
         # Security
-        "cryptdll.dll", "dpapi.dll", "wldap32.dll",
+        "cryptdll.dll",
+        "dpapi.dll",
+        "wldap32.dll",
     ]
 
     for watch_dir in WATCH_DIRS:
@@ -423,22 +487,24 @@ def check_recently_modified_sys_binaries() -> List[Dict]:
                     # Heuristic: check if there's a SideBySide manifest for this file
                     # (legitimate WU updates create CBS\Logs entries)
                     mod_str = mtime.strftime("%Y-%m-%d %H:%M:%S")
-                    findings.append({
-                        "title":       f"Critical system binary recently modified: {binary_name}",
-                        "path":        str(bin_path),
-                        "reason":      (
-                            f"'{bin_path}' was last modified {mod_str} (within the "
-                            "last 7 days). Critical Windows system DLLs and executables "
-                            "should only change during Windows Update. Recent modifications "
-                            "to authentication libraries (lsasrv.dll, wdigest.dll, etc.) "
-                            "are a strong indicator of pass-the-hash implant installation "
-                            "or LSASS patching. Verify via CBS log: "
-                            r"C:\Windows\Logs\CBS\CBS.log"
-                        ),
-                        "severity":    "HIGH",
-                        "category":    "ads",
-                        "subcategory": "modified_sys_binary",
-                    })
+                    findings.append(
+                        {
+                            "title": f"Critical system binary recently modified: {binary_name}",
+                            "path": str(bin_path),
+                            "reason": (
+                                f"'{bin_path}' was last modified {mod_str} (within the "
+                                "last 7 days). Critical Windows system DLLs and executables "
+                                "should only change during Windows Update. Recent modifications "
+                                "to authentication libraries (lsasrv.dll, wdigest.dll, etc.) "
+                                "are a strong indicator of pass-the-hash implant installation "
+                                "or LSASS patching. Verify via CBS log: "
+                                r"C:\Windows\Logs\CBS\CBS.log"
+                            ),
+                            "severity": "HIGH",
+                            "category": "ads",
+                            "subcategory": "modified_sys_binary",
+                        }
+                    )
             except (PermissionError, OSError):
                 pass
 
@@ -448,6 +514,7 @@ def check_recently_modified_sys_binaries() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 8: PE header in any ADS (deep check on flagged files)
 # ──────────────────────────────────────────────
+
 
 def check_pe_in_ads() -> List[Dict]:
     """
@@ -475,21 +542,23 @@ def check_pe_in_ads() -> List[Dict]:
 
         data = _read_stream_bytes(filepath, stream, max_bytes=256)
         if _is_pe_header(data):
-            findings.append({
-                "title":       f"PE executable hidden in ADS: {stream}",
-                "path":        f"{filepath}:{stream}",
-                "reason":      (
-                    f"An ADS '{stream}' on '{filepath}' begins with a DOS MZ header "
-                    "(0x4D5A), indicating a valid Windows PE executable (EXE/DLL) is "
-                    "embedded inside this data stream. This is a well-known technique "
-                    "for hiding malware inside innocent-looking files while evading "
-                    "directory-based scanners. The file can be executed directly via "
-                    "wscript.exe or by patching the stream as a script resource."
-                ),
-                "severity":    "CRITICAL",
-                "category":    "ads",
-                "subcategory": "pe_in_ads",
-            })
+            findings.append(
+                {
+                    "title": f"PE executable hidden in ADS: {stream}",
+                    "path": f"{filepath}:{stream}",
+                    "reason": (
+                        f"An ADS '{stream}' on '{filepath}' begins with a DOS MZ header "
+                        "(0x4D5A), indicating a valid Windows PE executable (EXE/DLL) is "
+                        "embedded inside this data stream. This is a well-known technique "
+                        "for hiding malware inside innocent-looking files while evading "
+                        "directory-based scanners. The file can be executed directly via "
+                        "wscript.exe or by patching the stream as a script resource."
+                    ),
+                    "severity": "CRITICAL",
+                    "category": "ads",
+                    "subcategory": "pe_in_ads",
+                }
+            )
 
     return findings
 
@@ -498,14 +567,15 @@ def check_pe_in_ads() -> List[Dict]:
 # Entry point
 # ──────────────────────────────────────────────
 
+
 def scan_ads() -> List[Dict]:
     findings: List[Dict] = []
     checks = [
-        ("ads_hot_dirs",       check_ads_in_hot_dirs),
-        ("system32_zone_id",   check_system32_zone_id),
-        ("directory_ads",      check_directory_ads),
-        ("modified_sys_bins",  check_recently_modified_sys_binaries),
-        ("pe_in_ads",          check_pe_in_ads),
+        ("ads_hot_dirs", check_ads_in_hot_dirs),
+        ("system32_zone_id", check_system32_zone_id),
+        ("directory_ads", check_directory_ads),
+        ("modified_sys_bins", check_recently_modified_sys_binaries),
+        ("pe_in_ads", check_pe_in_ads),
     ]
     for name, fn in checks:
         try:
@@ -522,8 +592,8 @@ if __name__ == "__main__":
     results = scan_ads()
     sys.stderr.write(f"[WRAITH-ADS] ADS scan complete: {len(results)} findings\n")
     output = {
-        "scanner":  "WRAITH-ads",
-        "mode":     "ads",
+        "scanner": "WRAITH-ads",
+        "mode": "ads",
         "findings": results,
     }
     print(json.dumps(output, indent=2))

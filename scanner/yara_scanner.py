@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional
 
 try:
     import yara
+
     YARA_AVAILABLE = True
 except ImportError:
     YARA_AVAILABLE = False
@@ -56,9 +57,24 @@ RULE_SOURCES: dict[str, list[str]] = {
 
 # Extensions to scan
 SCAN_EXTENSIONS = {
-    ".exe", ".dll", ".sys", ".drv", ".scr", ".cpl", ".ocx",
-    ".bat", ".cmd", ".ps1", ".vbs", ".vbe", ".js", ".hta",
-    ".lnk", ".msi", ".jar", ".com"
+    ".exe",
+    ".dll",
+    ".sys",
+    ".drv",
+    ".scr",
+    ".cpl",
+    ".ocx",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".vbs",
+    ".vbe",
+    ".js",
+    ".hta",
+    ".lnk",
+    ".msi",
+    ".jar",
+    ".com",
 }
 
 # Paths to prioritize
@@ -69,7 +85,12 @@ PRIORITY_PATHS = [
     Path(os.environ.get("TMP", "")),
     Path(os.environ.get("USERPROFILE", "")) / "Downloads",
     Path(os.environ.get("SystemRoot", "C:/Windows")) / "Temp",
-    Path(os.environ.get("PROGRAMDATA", "C:/ProgramData")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup",
+    Path(os.environ.get("PROGRAMDATA", "C:/ProgramData"))
+    / "Microsoft"
+    / "Windows"
+    / "Start Menu"
+    / "Programs"
+    / "Startup",
 ]
 
 
@@ -85,7 +106,9 @@ def download_rules(rules_dir: Path) -> List[str]:
             continue
         for url in urls:
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "WRAITH-Scanner/1.0"})
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "WRAITH-Scanner/1.0"}
+                )
                 with urllib.request.urlopen(req, timeout=10) as r:
                     content = r.read()
                 dest.write_bytes(content)
@@ -137,23 +160,31 @@ def scan_file_yara(rules, filepath: str) -> List[Dict]:
     try:
         matches = rules.match(filepath, timeout=10)
         for m in matches:
-            findings.append({
-                "category": "yara",
-                "subcategory": "signature_match",
-                "severity": "CRITICAL",
-                "title": f"YARA Match: {m.rule}",
-                "path": filepath,
-                "rule": m.rule,
-                "namespace": m.namespace,
-                "tags": list(m.tags),
-                "strings": [
-                    {"offset": s.instances[0].offset if s.instances else 0,
-                     "identifier": s.identifier,
-                     "data": repr(s.instances[0].matched_data[:64]) if s.instances else ""}
-                    for s in m.strings[:5]  # limit to first 5 string matches
-                ],
-                "reason": f"Matched YARA rule: {m.rule} (namespace: {m.namespace})"
-            })
+            findings.append(
+                {
+                    "category": "yara",
+                    "subcategory": "signature_match",
+                    "severity": "CRITICAL",
+                    "title": f"YARA Match: {m.rule}",
+                    "path": filepath,
+                    "rule": m.rule,
+                    "namespace": m.namespace,
+                    "tags": list(m.tags),
+                    "strings": [
+                        {
+                            "offset": s.instances[0].offset if s.instances else 0,
+                            "identifier": s.identifier,
+                            "data": (
+                                repr(s.instances[0].matched_data[:64])
+                                if s.instances
+                                else ""
+                            ),
+                        }
+                        for s in m.strings[:5]  # limit to first 5 string matches
+                    ],
+                    "reason": f"Matched YARA rule: {m.rule} (namespace: {m.namespace})",
+                }
+            )
     except yara.TimeoutError:
         pass  # skip timeout files
     except Exception:
@@ -176,7 +207,7 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
             "module": "yara",
             "error": "yara-python not installed. Run: pip install yara-python",
             "findings": [],
-            "files_scanned": 0
+            "files_scanned": 0,
         }
 
     rules = load_rules(rules_dir)
@@ -185,7 +216,7 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
             "module": "yara",
             "error": "No YARA rules loaded",
             "findings": [],
-            "files_scanned": 0
+            "files_scanned": 0,
         }
 
     # Scan priority paths first (fast, high-value)
@@ -197,8 +228,12 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
             return
         for root, dirs, files in os.walk(str(base)):
             # Skip WinSxS etc
-            dirs[:] = [d for d in dirs if d.lower() not in
-                       {"winsxs","assembly","microsoft.net","$recycle.bin"}]
+            dirs[:] = [
+                d
+                for d in dirs
+                if d.lower()
+                not in {"winsxs", "assembly", "microsoft.net", "$recycle.bin"}
+            ]
             for fname in files:
                 fpath = os.path.join(root, fname)
                 if fpath in scanned_paths:
@@ -221,5 +256,5 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
         "module": "yara",
         "findings_count": len(findings),
         "files_scanned": files_scanned,
-        "findings": findings
+        "findings": findings,
     }

@@ -65,8 +65,8 @@ SUSPICIOUS_STRINGS = [
 
 # Double extension patterns
 DOUBLE_EXT_RE = re.compile(
-    r'\.(txt|pdf|doc|docx|jpg|png|zip|rar)\.(exe|bat|cmd|vbs|ps1|scr|com)$',
-    re.IGNORECASE
+    r"\.(txt|pdf|doc|docx|jpg|png|zip|rar)\.(exe|bat|cmd|vbs|ps1|scr|com)$",
+    re.IGNORECASE,
 )
 
 # Paths worth scanning heuristically
@@ -77,12 +77,24 @@ HEURISTIC_SCAN_PATHS = [
     os.environ.get("TMP", ""),
     r"C:\Windows\Temp",
     r"C:\ProgramData",
-    os.path.join(os.environ.get("USERPROFILE",""), "Downloads"),
-    os.path.join(os.environ.get("USERPROFILE",""), "Desktop"),
+    os.path.join(os.environ.get("USERPROFILE", ""), "Downloads"),
+    os.path.join(os.environ.get("USERPROFILE", ""), "Desktop"),
 ]
 
-SKIP_DIRS_LOWER = {"winsxs","assembly","microsoft.net","installer","$recycle.bin"}
-SCAN_EXT = {".exe",".dll",".sys",".scr",".ps1",".bat",".cmd",".vbs",".js",".hta",".com"}
+SKIP_DIRS_LOWER = {"winsxs", "assembly", "microsoft.net", "installer", "$recycle.bin"}
+SCAN_EXT = {
+    ".exe",
+    ".dll",
+    ".sys",
+    ".scr",
+    ".ps1",
+    ".bat",
+    ".cmd",
+    ".vbs",
+    ".js",
+    ".hta",
+    ".com",
+}
 
 
 def calc_entropy(data: bytes) -> float:
@@ -104,15 +116,18 @@ def check_pe_header(data: bytes) -> Tuple[bool, str]:
     """Check for PE anomalies."""
     if len(data) < 64:
         return False, ""
-    if data[:2] != b'MZ':
+    if data[:2] != b"MZ":
         return False, ""
     try:
         pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
         if pe_offset + 4 > len(data):
             return True, "Invalid PE offset"
-        sig = data[pe_offset:pe_offset+4]
-        if sig != b'PE\x00\x00':
-            return True, f"Missing PE signature (got {sig!r}) – possibly corrupted or hollowed"
+        sig = data[pe_offset : pe_offset + 4]
+        if sig != b"PE\x00\x00":
+            return (
+                True,
+                f"Missing PE signature (got {sig!r}) – possibly corrupted or hollowed",
+            )
     except Exception:
         return True, "PE header parse error"
     return False, ""
@@ -125,19 +140,21 @@ def scan_file_heuristics(filepath: str) -> List[Dict]:
 
     # Double extension check
     if DOUBLE_EXT_RE.search(fname):
-        findings.append({
-            "category": "heuristics",
-            "subcategory": "double_extension",
-            "severity": "HIGH",
-            "title": f"Double Extension: {fname}",
-            "path": filepath,
-            "reason": "Filename uses double extension to disguise executable"
-        })
+        findings.append(
+            {
+                "category": "heuristics",
+                "subcategory": "double_extension",
+                "severity": "HIGH",
+                "title": f"Double Extension: {fname}",
+                "path": filepath,
+                "reason": "Filename uses double extension to disguise executable",
+            }
+        )
 
     # Read file for analysis
     try:
         with open(filepath, "rb") as f:
-            data = f.read(1024*1024)  # read up to 1MB
+            data = f.read(1024 * 1024)  # read up to 1MB
     except Exception:
         return findings
 
@@ -145,41 +162,47 @@ def scan_file_heuristics(filepath: str) -> List[Dict]:
     if ext in (".exe", ".dll", ".sys", ".scr"):
         entropy = calc_entropy(data)
         if entropy > 7.2:
-            findings.append({
-                "category": "heuristics",
-                "subcategory": "high_entropy",
-                "severity": "HIGH",
-                "title": f"High Entropy Binary: {fname}",
-                "path": filepath,
-                "entropy": round(entropy, 4),
-                "reason": f"Entropy={entropy:.3f} (>7.2 indicates packing/encryption)"
-            })
+            findings.append(
+                {
+                    "category": "heuristics",
+                    "subcategory": "high_entropy",
+                    "severity": "HIGH",
+                    "title": f"High Entropy Binary: {fname}",
+                    "path": filepath,
+                    "entropy": round(entropy, 4),
+                    "reason": f"Entropy={entropy:.3f} (>7.2 indicates packing/encryption)",
+                }
+            )
 
         # PE anomaly check
         anomaly, reason = check_pe_header(data)
         if anomaly:
-            findings.append({
-                "category": "heuristics",
-                "subcategory": "pe_anomaly",
-                "severity": "CRITICAL",
-                "title": f"PE Anomaly: {fname}",
-                "path": filepath,
-                "reason": reason
-            })
+            findings.append(
+                {
+                    "category": "heuristics",
+                    "subcategory": "pe_anomaly",
+                    "severity": "CRITICAL",
+                    "title": f"PE Anomaly: {fname}",
+                    "path": filepath,
+                    "reason": reason,
+                }
+            )
 
     # Suspicious strings in ALL scanned file types
     lower_data = data.lower()
     for pattern in SUSPICIOUS_STRINGS:
         if pattern.lower() in lower_data:
-            findings.append({
-                "category": "heuristics",
-                "subcategory": "suspicious_string",
-                "severity": "HIGH",
-                "title": f"Suspicious String in {fname}",
-                "path": filepath,
-                "pattern": pattern.decode("utf-8", errors="replace"),
-                "reason": f"Contains suspicious indicator: {pattern.decode('utf-8', errors='replace')}"
-            })
+            findings.append(
+                {
+                    "category": "heuristics",
+                    "subcategory": "suspicious_string",
+                    "severity": "HIGH",
+                    "title": f"Suspicious String in {fname}",
+                    "path": filepath,
+                    "pattern": pattern.decode("utf-8", errors="replace"),
+                    "reason": f"Contains suspicious indicator: {pattern.decode('utf-8', errors='replace')}",
+                }
+            )
             break  # One finding per file to avoid noise; track all in detail field
 
     return findings
@@ -219,5 +242,5 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
         "module": "heuristics",
         "findings_count": len(findings),
         "files_scanned": files_scanned,
-        "findings": findings
+        "findings": findings,
     }

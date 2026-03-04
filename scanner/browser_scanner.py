@@ -28,16 +28,20 @@ from typing import List, Dict, Any, Optional
 
 # Extension permissions that indicate high risk when combined
 DANGEROUS_PERMISSIONS = {
-    "<all_urls>", "http://*/*", "https://*/*", "*://*/*",  # broad URL access
-    "webRequest", "webRequestBlocking",          # MITM traffic interception
-    "history",                                   # browsing history exfil
-    "bookmarks",                                 # bookmark exfil
-    "cookies",                                   # session cookie theft
-    "clipboardRead",                             # clipboard snooping
-    "nativeMessaging",                           # local system access
-    "proxy",                                     # traffic redirection
-    "declarativeNetRequest",                     # traffic filtering/blocking
-    "passwords",                                 # deprecated but still present
+    "<all_urls>",
+    "http://*/*",
+    "https://*/*",
+    "*://*/*",  # broad URL access
+    "webRequest",
+    "webRequestBlocking",  # MITM traffic interception
+    "history",  # browsing history exfil
+    "bookmarks",  # bookmark exfil
+    "cookies",  # session cookie theft
+    "clipboardRead",  # clipboard snooping
+    "nativeMessaging",  # local system access
+    "proxy",  # traffic redirection
+    "declarativeNetRequest",  # traffic filtering/blocking
+    "passwords",  # deprecated but still present
 }
 
 # A single high-risk permission doesn't mean malicious; two or more together is suspicious
@@ -68,21 +72,48 @@ KNOWN_BAD_EXTENSION_IDS = {
 
 # Registry paths checked for browser homepage / search hijacks
 BROWSER_REGISTRY_PATHS = [
-    (winreg.HKEY_CURRENT_USER,      r"Software\Microsoft\Internet Explorer\Main",            "Start Page"),
-    (winreg.HKEY_CURRENT_USER,      r"Software\Microsoft\Internet Explorer\Main",            "Default_Page_URL"),
-    (winreg.HKEY_LOCAL_MACHINE,     r"Software\Microsoft\Internet Explorer\Main",            "Default_Page_URL"),
-    (winreg.HKEY_LOCAL_MACHINE,     r"Software\Microsoft\Internet Explorer\Main",            "Start Page"),
-    (winreg.HKEY_CURRENT_USER,      r"Software\Policies\Google\Chrome",                      "HomepageLocation"),
-    (winreg.HKEY_LOCAL_MACHINE,     r"Software\Policies\Google\Chrome",                      "HomepageLocation"),
-    (winreg.HKEY_CURRENT_USER,      r"Software\Policies\Microsoft\Edge",                     "HomepageLocation"),
-    (winreg.HKEY_LOCAL_MACHINE,     r"Software\Policies\Microsoft\Edge",                     "HomepageLocation"),
+    (
+        winreg.HKEY_CURRENT_USER,
+        r"Software\Microsoft\Internet Explorer\Main",
+        "Start Page",
+    ),
+    (
+        winreg.HKEY_CURRENT_USER,
+        r"Software\Microsoft\Internet Explorer\Main",
+        "Default_Page_URL",
+    ),
+    (
+        winreg.HKEY_LOCAL_MACHINE,
+        r"Software\Microsoft\Internet Explorer\Main",
+        "Default_Page_URL",
+    ),
+    (
+        winreg.HKEY_LOCAL_MACHINE,
+        r"Software\Microsoft\Internet Explorer\Main",
+        "Start Page",
+    ),
+    (winreg.HKEY_CURRENT_USER, r"Software\Policies\Google\Chrome", "HomepageLocation"),
+    (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Google\Chrome", "HomepageLocation"),
+    (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge", "HomepageLocation"),
+    (
+        winreg.HKEY_LOCAL_MACHINE,
+        r"Software\Policies\Microsoft\Edge",
+        "HomepageLocation",
+    ),
 ]
 
 # Trusted homepage/search domains (substrings)
 TRUSTED_HOMEPAGE_DOMAINS = [
-    "microsoft.com", "google.com", "bing.com", "yahoo.com",
-    "duckduckgo.com", "startpage.com", "about:blank", "about:newtab",
-    "chrome://newtab", "edge://newtab",
+    "microsoft.com",
+    "google.com",
+    "bing.com",
+    "yahoo.com",
+    "duckduckgo.com",
+    "startpage.com",
+    "about:blank",
+    "about:newtab",
+    "chrome://newtab",
+    "edge://newtab",
 ]
 
 
@@ -90,11 +121,14 @@ TRUSTED_HOMEPAGE_DOMAINS = [
 # Helpers
 # ──────────────────────────────────────────────
 
+
 def _run_ps(cmd: str, timeout: int = 20) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         return result.stdout.strip()
     except Exception:
@@ -151,6 +185,7 @@ def _load_manifest(ext_version_dir: Path) -> Optional[Dict]:
 # Check 1: Extension manifest scan
 # ──────────────────────────────────────────────
 
+
 def check_extension_manifests() -> List[Dict]:
     """
     Scan installed browser extensions for dangerous permission combinations
@@ -176,19 +211,21 @@ def check_extension_manifests() -> List[Dict]:
 
                 # Check known-bad ID
                 if ext_id.lower() in KNOWN_BAD_EXTENSION_IDS:
-                    findings.append({
-                        "title":       f"{browser_label} known malicious extension: {ext_id}",
-                        "path":        str(ext_id_dir),
-                        "reason":      (
-                            f"Extension ID '{ext_id}' in {browser_label} matches a "
-                            "known malicious/adware extension documented in threat "
-                            "intelligence reports. These extensions perform credential "
-                            "theft, ad injection, traffic interception, or search hijacking."
-                        ),
-                        "severity":    "CRITICAL",
-                        "category":    "browser",
-                        "subcategory": "known_bad_extension",
-                    })
+                    findings.append(
+                        {
+                            "title": f"{browser_label} known malicious extension: {ext_id}",
+                            "path": str(ext_id_dir),
+                            "reason": (
+                                f"Extension ID '{ext_id}' in {browser_label} matches a "
+                                "known malicious/adware extension documented in threat "
+                                "intelligence reports. These extensions perform credential "
+                                "theft, ad injection, traffic interception, or search hijacking."
+                            ),
+                            "severity": "CRITICAL",
+                            "category": "browser",
+                            "subcategory": "known_bad_extension",
+                        }
+                    )
                     continue
 
                 # Find the version directory and load manifest
@@ -210,36 +247,49 @@ def check_extension_manifests() -> List[Dict]:
 
                 # Collect all permissions (permissions + optional_permissions + host_permissions)
                 perms = set()
-                for perm_key in ("permissions", "optional_permissions", "host_permissions"):
+                for perm_key in (
+                    "permissions",
+                    "optional_permissions",
+                    "host_permissions",
+                ):
                     for p in manifest.get(perm_key, []):
                         perms.add(str(p).lower())
 
                 # Count dangerous permissions hit
-                danger_hits = {p for p in perms if p in {hp.lower() for hp in DANGEROUS_PERMISSIONS}}
+                danger_hits = {
+                    p
+                    for p in perms
+                    if p in {hp.lower() for hp in DANGEROUS_PERMISSIONS}
+                }
 
                 if len(danger_hits) >= HIGH_RISK_PERMISSION_THRESHOLD:
                     # Extra flag: does it also have a background script? (persistent browser agent)
                     has_background = bool(
-                        manifest.get("background") or
-                        manifest.get("background_page")
+                        manifest.get("background") or manifest.get("background_page")
                     )
                     severity = "HIGH" if not has_background else "CRITICAL"
-                    findings.append({
-                        "title":       f"{browser_label} high-risk extension: {ext_name[:60]}",
-                        "path":        str(ext_id_dir),
-                        "reason":      (
-                            f"{browser_label} extension '{ext_name}' (ID: {ext_id}) "
-                            f"holds {len(danger_hits)} high-risk permissions: "
-                            f"{', '.join(sorted(danger_hits))}. "
-                            "Extensions combining broad URL access with webRequest or "
-                            "cookie permissions can intercept all HTTPS traffic, hijack "
-                            "authenticated sessions, and exfiltrate passwords."
-                            + (" Has persistent background script." if has_background else "")
-                        ),
-                        "severity":    severity,
-                        "category":    "browser",
-                        "subcategory": "dangerous_permissions",
-                    })
+                    findings.append(
+                        {
+                            "title": f"{browser_label} high-risk extension: {ext_name[:60]}",
+                            "path": str(ext_id_dir),
+                            "reason": (
+                                f"{browser_label} extension '{ext_name}' (ID: {ext_id}) "
+                                f"holds {len(danger_hits)} high-risk permissions: "
+                                f"{', '.join(sorted(danger_hits))}. "
+                                "Extensions combining broad URL access with webRequest or "
+                                "cookie permissions can intercept all HTTPS traffic, hijack "
+                                "authenticated sessions, and exfiltrate passwords."
+                                + (
+                                    " Has persistent background script."
+                                    if has_background
+                                    else ""
+                                )
+                            ),
+                            "severity": severity,
+                            "category": "browser",
+                            "subcategory": "dangerous_permissions",
+                        }
+                    )
         except PermissionError:
             pass
         except Exception:
@@ -251,6 +301,7 @@ def check_extension_manifests() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 2: Browser shortcut injection
 # ──────────────────────────────────────────────
+
 
 def check_browser_shortcuts() -> List[Dict]:
     """
@@ -267,7 +318,7 @@ def check_browser_shortcuts() -> List[Dict]:
         "--no-sandbox",
         "--proxy-server",
         "--remote-debugging-port",
-        "--user-data-dir",        # redirect to attacker-controlled profile
+        "--user-data-dir",  # redirect to attacker-controlled profile
         "--disable-popup-blocking",
         "--disable-features=IsolateOrigins",
     ]
@@ -277,8 +328,15 @@ def check_browser_shortcuts() -> List[Dict]:
     shortcut_dirs = [
         Path(os.environ.get("USERPROFILE", "")) / "Desktop",
         Path(r"C:\Users\Public\Desktop"),
-        Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Internet Explorer" / "Quick Launch",
-        Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+        Path(os.environ.get("APPDATA", ""))
+        / "Microsoft"
+        / "Internet Explorer"
+        / "Quick Launch",
+        Path(os.environ.get("APPDATA", ""))
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs",
     ]
 
     for sdir in shortcut_dirs:
@@ -307,20 +365,22 @@ def check_browser_shortcuts() -> List[Dict]:
 
                 for flag in SUSPICIOUS_FLAGS:
                     if flag.lower() in args_str.lower():
-                        findings.append({
-                            "title":       f"Browser shortcut injection: {flag}",
-                            "path":        str(lnk),
-                            "reason":      (
-                                f"Browser shortcut '{lnk.name}' (target: '{target}') "
-                                f"contains the injected flag '{flag}'. Browser hijackers "
-                                "modify desktop shortcuts to load malicious extensions, "
-                                "disable security features, or redirect traffic through "
-                                "attacker-controlled proxies every time the browser opens."
-                            ),
-                            "severity":    "CRITICAL",
-                            "category":    "browser",
-                            "subcategory": "shortcut_injection",
-                        })
+                        findings.append(
+                            {
+                                "title": f"Browser shortcut injection: {flag}",
+                                "path": str(lnk),
+                                "reason": (
+                                    f"Browser shortcut '{lnk.name}' (target: '{target}') "
+                                    f"contains the injected flag '{flag}'. Browser hijackers "
+                                    "modify desktop shortcuts to load malicious extensions, "
+                                    "disable security features, or redirect traffic through "
+                                    "attacker-controlled proxies every time the browser opens."
+                                ),
+                                "severity": "CRITICAL",
+                                "category": "browser",
+                                "subcategory": "shortcut_injection",
+                            }
+                        )
                         break
         except Exception:
             pass
@@ -332,6 +392,7 @@ def check_browser_shortcuts() -> List[Dict]:
 # Check 3: Homepage / search engine hijack (registry)
 # ──────────────────────────────────────────────
 
+
 def check_homepage_hijack() -> List[Dict]:
     findings = []
     for hive, subkey, value_name in BROWSER_REGISTRY_PATHS:
@@ -341,20 +402,22 @@ def check_homepage_hijack() -> List[Dict]:
                 val_str = str(val).lower()
                 if not any(td in val_str for td in TRUSTED_HOMEPAGE_DOMAINS):
                     hive_name = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
-                    findings.append({
-                        "title":       f"Browser homepage/search hijacked: {value_name}",
-                        "path":        f"{hive_name}\\{subkey}\\{value_name}",
-                        "reason":      (
-                            f"Registry value '{value_name}' under '{subkey}' is set to "
-                            f"'{val}'. This URL is not a recognized trusted homepage. "
-                            "Browser hijackers set this registry value to redirect users "
-                            "to advertising, phishing, or malware-distribution pages and "
-                            "to prevent the user from changing their homepage."
-                        ),
-                        "severity":    "HIGH",
-                        "category":    "browser",
-                        "subcategory": "homepage_hijack",
-                    })
+                    findings.append(
+                        {
+                            "title": f"Browser homepage/search hijacked: {value_name}",
+                            "path": f"{hive_name}\\{subkey}\\{value_name}",
+                            "reason": (
+                                f"Registry value '{value_name}' under '{subkey}' is set to "
+                                f"'{val}'. This URL is not a recognized trusted homepage. "
+                                "Browser hijackers set this registry value to redirect users "
+                                "to advertising, phishing, or malware-distribution pages and "
+                                "to prevent the user from changing their homepage."
+                            ),
+                            "severity": "HIGH",
+                            "category": "browser",
+                            "subcategory": "homepage_hijack",
+                        }
+                    )
         except FileNotFoundError:
             pass
         except PermissionError:
@@ -369,6 +432,7 @@ def check_homepage_hijack() -> List[Dict]:
 # Check 4: NativeMessaging host anomalies
 # ──────────────────────────────────────────────
 
+
 def check_native_messaging() -> List[Dict]:
     """
     NativeMessaging hosts allow browser extensions to communicate with
@@ -377,9 +441,9 @@ def check_native_messaging() -> List[Dict]:
     """
     findings = []
     NM_REGISTRY_PATHS = [
-        (winreg.HKEY_CURRENT_USER,  r"Software\Google\Chrome\NativeMessagingHosts"),
+        (winreg.HKEY_CURRENT_USER, r"Software\Google\Chrome\NativeMessagingHosts"),
         (winreg.HKEY_LOCAL_MACHINE, r"Software\Google\Chrome\NativeMessagingHosts"),
-        (winreg.HKEY_CURRENT_USER,  r"Software\Microsoft\Edge\NativeMessagingHosts"),
+        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\NativeMessagingHosts"),
         (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Edge\NativeMessagingHosts"),
     ]
 
@@ -387,7 +451,7 @@ def check_native_messaging() -> List[Dict]:
     KNOWN_SAFE_NMH = {
         "com.google.update_crx",
         "com.google.runtime",
-        "com.google.drive.nativeproxy",    # Google Drive File Stream
+        "com.google.drive.nativeproxy",  # Google Drive File Stream
         "com.google.drive.fs.browser",
         "com.1password.1password",
         "com.lastpass.nativehelper",
@@ -396,11 +460,11 @@ def check_native_messaging() -> List[Dict]:
         "com.northwest.signer",
         "com.microsoft.identity.client.helper",
         "com.microsoft.teams2.nativehelper",
-        "com.microsoft.browsercore",        # Edge/Windows Browser Core
+        "com.microsoft.browsercore",  # Edge/Windows Browser Core
         "com.microsoft.windowssearch",
         "com.nordpass.app",
         "com.keeper.security",
-        "com.dropbox.nmh",                  # Dropbox native messaging helper
+        "com.dropbox.nmh",  # Dropbox native messaging helper
         "com.dropbox.chrome",
         "com.adobe.acrobat.chrome.nativeadapter",
         "com.adobe.acrobat.extension",
@@ -425,23 +489,27 @@ def check_native_messaging() -> List[Dict]:
                             except Exception:
                                 manifest_path = "unknown"
 
-                        hive_name = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
-                        findings.append({
-                            "title":       f"Unknown NativeMessaging host: {host_name}",
-                            "path":        f"{hive_name}\\{key_path}\\{host_name}",
-                            "reason":      (
-                                f"NativeMessaging host '{host_name}' is registered in "
-                                f"'{key_path}' pointing to '{manifest_path}'. "
-                                "Native messaging allows browser extensions to bypass "
-                                "the browser sandbox and execute arbitrary native code "
-                                "on the host system. Malicious NMH registrations are "
-                                "used to achieve persistent code execution triggered "
-                                "every time a compromised extension runs in the browser."
-                            ),
-                            "severity":    "HIGH",
-                            "category":    "browser",
-                            "subcategory": "native_messaging",
-                        })
+                        hive_name = (
+                            "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
+                        )
+                        findings.append(
+                            {
+                                "title": f"Unknown NativeMessaging host: {host_name}",
+                                "path": f"{hive_name}\\{key_path}\\{host_name}",
+                                "reason": (
+                                    f"NativeMessaging host '{host_name}' is registered in "
+                                    f"'{key_path}' pointing to '{manifest_path}'. "
+                                    "Native messaging allows browser extensions to bypass "
+                                    "the browser sandbox and execute arbitrary native code "
+                                    "on the host system. Malicious NMH registrations are "
+                                    "used to achieve persistent code execution triggered "
+                                    "every time a compromised extension runs in the browser."
+                                ),
+                                "severity": "HIGH",
+                                "category": "browser",
+                                "subcategory": "native_messaging",
+                            }
+                        )
                     except OSError:
                         break
         except FileNotFoundError:
@@ -456,6 +524,7 @@ def check_native_messaging() -> List[Dict]:
 # Check 5: Forced enterprise policies
 # ──────────────────────────────────────────────
 
+
 def check_forced_policies() -> List[Dict]:
     """
     Attackers install Chrome/Edge Group Policy extensions or force proxy
@@ -465,12 +534,28 @@ def check_forced_policies() -> List[Dict]:
     """
     findings = []
     POLICY_CHECKS = [
-        (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Google\Chrome", "ExtensionInstallForcelist"),
-        (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Microsoft\Edge",  "ExtensionInstallForcelist"),
-        (winreg.HKEY_CURRENT_USER,  r"Software\Policies\Google\Chrome", "ExtensionInstallForcelist"),
-        (winreg.HKEY_CURRENT_USER,  r"Software\Policies\Microsoft\Edge",  "ExtensionInstallForcelist"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"Software\Policies\Google\Chrome",
+            "ExtensionInstallForcelist",
+        ),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"Software\Policies\Microsoft\Edge",
+            "ExtensionInstallForcelist",
+        ),
+        (
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Policies\Google\Chrome",
+            "ExtensionInstallForcelist",
+        ),
+        (
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Policies\Microsoft\Edge",
+            "ExtensionInstallForcelist",
+        ),
         (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Google\Chrome", "ProxyServer"),
-        (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Microsoft\Edge",  "ProxyServer"),
+        (winreg.HKEY_LOCAL_MACHINE, r"Software\Policies\Microsoft\Edge", "ProxyServer"),
     ]
 
     for hive, subkey, value_name in POLICY_CHECKS:
@@ -486,22 +571,28 @@ def check_forced_policies() -> List[Dict]:
                                 try:
                                     _, ext_entry, _ = winreg.EnumValue(sk, i)
                                     i += 1
-                                    hive_name = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
-                                    findings.append({
-                                        "title":       f"Extensions force-installed via policy: {str(ext_entry)[:50]}",
-                                        "path":        f"{hive_name}\\{sub_k_path}",
-                                        "reason":      (
-                                            f"Extension '{ext_entry}' is being force-installed "
-                                            "via Chrome/Edge enterprise Group Policy. On a "
-                                            "non-managed personal workstation, this policy key "
-                                            "should not exist. Malware uses this mechanism to "
-                                            "silently install browser extensions that survive "
-                                            "manual removal attempts."
-                                        ),
-                                        "severity":    "CRITICAL",
-                                        "category":    "browser",
-                                        "subcategory": "forced_extension",
-                                    })
+                                    hive_name = (
+                                        "HKCU"
+                                        if hive == winreg.HKEY_CURRENT_USER
+                                        else "HKLM"
+                                    )
+                                    findings.append(
+                                        {
+                                            "title": f"Extensions force-installed via policy: {str(ext_entry)[:50]}",
+                                            "path": f"{hive_name}\\{sub_k_path}",
+                                            "reason": (
+                                                f"Extension '{ext_entry}' is being force-installed "
+                                                "via Chrome/Edge enterprise Group Policy. On a "
+                                                "non-managed personal workstation, this policy key "
+                                                "should not exist. Malware uses this mechanism to "
+                                                "silently install browser extensions that survive "
+                                                "manual removal attempts."
+                                            ),
+                                            "severity": "CRITICAL",
+                                            "category": "browser",
+                                            "subcategory": "forced_extension",
+                                        }
+                                    )
                                 except OSError:
                                     break
                     except FileNotFoundError:
@@ -509,21 +600,23 @@ def check_forced_policies() -> List[Dict]:
                 else:
                     val, _ = winreg.QueryValueEx(k, value_name)
                     hive_name = "HKCU" if hive == winreg.HKEY_CURRENT_USER else "HKLM"
-                    findings.append({
-                        "title":       f"Browser proxy forced via policy: {val}",
-                        "path":        f"{hive_name}\\{subkey}\\{value_name}",
-                        "reason":      (
-                            f"A proxy server '{val}' is configured via enterprise "
-                            "policy registry key for Chrome/Edge. On personal/non-domain "
-                            "machines, this policy should not be set. Browser-level proxy "
-                            "force-configuration is used by adware to route all browser "
-                            "traffic through an attacker-controlled proxy for ad injection "
-                            "or credential interception."
-                        ),
-                        "severity":    "HIGH",
-                        "category":    "browser",
-                        "subcategory": "forced_proxy",
-                    })
+                    findings.append(
+                        {
+                            "title": f"Browser proxy forced via policy: {val}",
+                            "path": f"{hive_name}\\{subkey}\\{value_name}",
+                            "reason": (
+                                f"A proxy server '{val}' is configured via enterprise "
+                                "policy registry key for Chrome/Edge. On personal/non-domain "
+                                "machines, this policy should not be set. Browser-level proxy "
+                                "force-configuration is used by adware to route all browser "
+                                "traffic through an attacker-controlled proxy for ad injection "
+                                "or credential interception."
+                            ),
+                            "severity": "HIGH",
+                            "category": "browser",
+                            "subcategory": "forced_proxy",
+                        }
+                    )
         except FileNotFoundError:
             pass
         except Exception:
@@ -536,14 +629,15 @@ def check_forced_policies() -> List[Dict]:
 # Entry point
 # ──────────────────────────────────────────────
 
+
 def scan_browser() -> List[Dict]:
     findings: List[Dict] = []
     checks = [
         ("extension_manifests", check_extension_manifests),
-        ("browser_shortcuts",   check_browser_shortcuts),
-        ("homepage_hijack",     check_homepage_hijack),
-        ("native_messaging",    check_native_messaging),
-        ("forced_policies",     check_forced_policies),
+        ("browser_shortcuts", check_browser_shortcuts),
+        ("homepage_hijack", check_homepage_hijack),
+        ("native_messaging", check_native_messaging),
+        ("forced_policies", check_forced_policies),
     ]
     for name, fn in checks:
         try:
@@ -558,10 +652,12 @@ def scan_browser() -> List[Dict]:
 if __name__ == "__main__":
     sys.stderr.write("[WRAITH-BROWSER] Browser hijack & extension scan starting...\n")
     results = scan_browser()
-    sys.stderr.write(f"[WRAITH-BROWSER] Browser scan complete: {len(results)} findings\n")
+    sys.stderr.write(
+        f"[WRAITH-BROWSER] Browser scan complete: {len(results)} findings\n"
+    )
     output = {
-        "scanner":  "WRAITH-browser",
-        "mode":     "browser",
+        "scanner": "WRAITH-browser",
+        "mode": "browser",
         "findings": results,
     }
     print(json.dumps(output, indent=2))

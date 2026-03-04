@@ -16,23 +16,28 @@ import traceback
 from pathlib import Path
 from typing import List, Dict, Any
 
+
 # ── Output builder ────────────────────────────────────────────────────────
 def emit(findings: List[Dict], mode: str, error: str | None = None) -> None:
     findings = assign_anomaly_scores(findings)
     sev_rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "INFO": 0}
     summary = {
-        "total":    len(findings),
+        "total": len(findings),
         "critical": sum(1 for f in findings if f.get("severity") == "CRITICAL"),
-        "high":     sum(1 for f in findings if f.get("severity") == "HIGH"),
-        "medium":   sum(1 for f in findings if f.get("severity") == "MEDIUM"),
-        "low":      sum(1 for f in findings if f.get("severity") == "LOW"),
-        "info":     sum(1 for f in findings if f.get("severity") == "INFO"),
+        "high": sum(1 for f in findings if f.get("severity") == "HIGH"),
+        "medium": sum(1 for f in findings if f.get("severity") == "MEDIUM"),
+        "low": sum(1 for f in findings if f.get("severity") == "LOW"),
+        "info": sum(1 for f in findings if f.get("severity") == "INFO"),
     }
     out: Dict[str, Any] = {
         "scanner": f"WRAITH-{mode}",
         "mode": mode,
         "summary": summary,
-        "findings": sorted(findings, key=lambda f: sev_rank.get(f.get("severity","INFO"), 0), reverse=True),
+        "findings": sorted(
+            findings,
+            key=lambda f: sev_rank.get(f.get("severity", "INFO"), 0),
+            reverse=True,
+        ),
     }
     if error:
         out["error"] = error
@@ -113,7 +118,10 @@ def compute_anomaly_score(f: Dict[str, Any]) -> float:
 
     if any(k in reason or k in title for k in ("openclaw", "metaquest", "oculus")):
         score += 8.0
-    if any(k in reason or k in title for k in ("inject", "shell", "beacon", "backdoor", "c2")):
+    if any(
+        k in reason or k in title
+        for k in ("inject", "shell", "beacon", "backdoor", "c2")
+    ):
         score += 8.0
 
     return round(_clamp(score), 2)
@@ -123,7 +131,9 @@ def assign_anomaly_scores(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]
     for f in findings:
         existing = _to_float(f.get("anomaly_score"), -1.0)
         computed = compute_anomaly_score(f)
-        f["anomaly_score"] = round(max(existing, computed) if existing >= 0 else computed, 2)
+        f["anomaly_score"] = round(
+            max(existing, computed) if existing >= 0 else computed, 2
+        )
     return findings
 
 
@@ -147,54 +157,95 @@ def scan_persistence(path: str) -> List[Dict]:
     ]
     for key in run_keys:
         try:
-            r = subprocess.run(["reg", "query", key], capture_output=True, text=True, timeout=10)
+            r = subprocess.run(
+                ["reg", "query", key], capture_output=True, text=True, timeout=10
+            )
             for line in r.stdout.splitlines():
                 stripped = line.strip()
-                if not stripped or stripped.startswith("HKEY"): continue
+                if not stripped or stripped.startswith("HKEY"):
+                    continue
                 parts = stripped.split(None, 2)
-                if len(parts) < 3: continue
+                if len(parts) < 3:
+                    continue
                 name, _, value = parts[0], parts[1], parts[2]
                 sev = "LOW"
                 reason = f"Registry autorun: {key}\\{name}"
                 # Elevate suspicious entries
                 lower_val = value.lower()
-                if any(x in lower_val for x in ["temp\\","tmp\\","appdata\\roaming","downloads\\","powershell -","wscript","mshta","cscript","regsvr32","rundll32 c:\\"]):
+                if any(
+                    x in lower_val
+                    for x in [
+                        "temp\\",
+                        "tmp\\",
+                        "appdata\\roaming",
+                        "downloads\\",
+                        "powershell -",
+                        "wscript",
+                        "mshta",
+                        "cscript",
+                        "regsvr32",
+                        "rundll32 c:\\",
+                    ]
+                ):
                     sev = "HIGH"
-                elif any(x in lower_val for x in ["openclaw","metaquest","oculus","ovrservice","airlink"]):
+                elif any(
+                    x in lower_val
+                    for x in [
+                        "openclaw",
+                        "metaquest",
+                        "oculus",
+                        "ovrservice",
+                        "airlink",
+                    ]
+                ):
                     sev = "CRITICAL"
-                    reason = f"SUSPICIOUS autorun (openclaw/Meta Quest related): {value}"
-                findings.append({
-                    "title":       f"Autorun: {name}",
-                    "path":        value,
-                    "reason":      reason,
-                    "severity":    sev,
-                    "category":    "persistence",
-                    "subcategory": "registry_run",
-                })
+                    reason = (
+                        f"SUSPICIOUS autorun (openclaw/Meta Quest related): {value}"
+                    )
+                findings.append(
+                    {
+                        "title": f"Autorun: {name}",
+                        "path": value,
+                        "reason": reason,
+                        "severity": sev,
+                        "category": "persistence",
+                        "subcategory": "registry_run",
+                    }
+                )
         except Exception as e:
             log(f"Registry key {key} error: {e}")
 
     # ── Startup folders ───────────────────────────────────────────────────
     startup_dirs = [
-        os.path.join(os.environ.get("APPDATA",""), r"Microsoft\Windows\Start Menu\Programs\Startup"),
+        os.path.join(
+            os.environ.get("APPDATA", ""),
+            r"Microsoft\Windows\Start Menu\Programs\Startup",
+        ),
         r"C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp",
     ]
     for sd in startup_dirs:
-        if not os.path.isdir(sd): continue
+        if not os.path.isdir(sd):
+            continue
         for item in Path(sd).iterdir():
-            if item.name.lower() == "desktop.ini": continue
+            if item.name.lower() == "desktop.ini":
+                continue
             sev = "MEDIUM"
             lower = item.name.lower()
-            if any(x in lower for x in ["openclaw","metaquest","oculus","airlink","ovrservice"]):
+            if any(
+                x in lower
+                for x in ["openclaw", "metaquest", "oculus", "airlink", "ovrservice"]
+            ):
                 sev = "CRITICAL"
-            findings.append({
-                "title":       f"Startup item: {item.name}",
-                "path":        str(item),
-                "reason":      f"File in startup folder: {sd}",
-                "severity":    sev,
-                "category":    "persistence",
-                "subcategory": "startup_folder",
-            })
+            findings.append(
+                {
+                    "title": f"Startup item: {item.name}",
+                    "path": str(item),
+                    "reason": f"File in startup folder: {sd}",
+                    "severity": sev,
+                    "category": "persistence",
+                    "subcategory": "startup_folder",
+                }
+            )
 
     # ── Scheduled tasks ───────────────────────────────────────────────────
     try:
@@ -232,39 +283,74 @@ Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled'} | ForEach-Object {
   }
 } | ConvertTo-Json -Depth 2
 """
-        r = subprocess.run(["powershell","-NoProfile","-NonInteractive","-Command", ps],
-                           capture_output=True, text=True, timeout=60)
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         if r.returncode == 0 and r.stdout.strip():
             tasks = json.loads(r.stdout)
-            if isinstance(tasks, dict): tasks = [tasks]
-            for t in (tasks or []):
+            if isinstance(tasks, dict):
+                tasks = [tasks]
+            for t in tasks or []:
                 action = (t.get("Action") or "").lower()
-                name   = t.get("TaskName","")
+                name = t.get("TaskName", "")
                 sev = "INFO"
                 reason = f"Scheduled task active: {t.get('TaskPath','')}{name}"
-                if any(x in action for x in ["temp\\","tmp\\","appdata\\roaming","powershell -enc","mshta","wscript","cscript","curl","wget","bitsadmin","certutil"]):
+                if any(
+                    x in action
+                    for x in [
+                        "temp\\",
+                        "tmp\\",
+                        "appdata\\roaming",
+                        "powershell -enc",
+                        "mshta",
+                        "wscript",
+                        "cscript",
+                        "curl",
+                        "wget",
+                        "bitsadmin",
+                        "certutil",
+                    ]
+                ):
                     sev = "HIGH"
                     reason = f"Suspicious scheduled task command: {action[:200]}"
-                elif any(x in action+name.lower() for x in ["openclaw","metaquest","oculus","ovrservice","airlink"]):
+                elif any(
+                    x in action + name.lower()
+                    for x in [
+                        "openclaw",
+                        "metaquest",
+                        "oculus",
+                        "ovrservice",
+                        "airlink",
+                    ]
+                ):
                     sev = "CRITICAL"
-                    reason = f"SUSPICIOUS task (openclaw/Meta Quest related): {action[:200]}"
-                elif any(x in action for x in ["powershell","cmd","wscript","cscript"]):
+                    reason = (
+                        f"SUSPICIOUS task (openclaw/Meta Quest related): {action[:200]}"
+                    )
+                elif any(
+                    x in action for x in ["powershell", "cmd", "wscript", "cscript"]
+                ):
                     sev = "LOW"
                 if sev != "INFO":
                     f = {
-                        "title":       f"Scheduled Task: {name}",
-                        "path":        t.get("TaskPath",""),
-                        "reason":      reason,
-                        "severity":    sev,
-                        "category":    "persistence",
+                        "title": f"Scheduled Task: {name}",
+                        "path": t.get("TaskPath", ""),
+                        "reason": reason,
+                        "severity": sev,
+                        "category": "persistence",
                         "subcategory": "scheduled_task",
-                        "cmdline":     t.get("Action","")[:300],
+                        "cmdline": t.get("Action", "")[:300],
                     }
-                    lrt = t.get("LastRunTime","")
+                    lrt = t.get("LastRunTime", "")
                     if lrt:
                         f["last_run"] = lrt
                         if t.get("LastRunSource") == "registered":
-                            f["reason"] += " (showing task registration date; scheduler last-run was unavailable/invalid)"
+                            f[
+                                "reason"
+                            ] += " (showing task registration date; scheduler last-run was unavailable/invalid)"
                     findings.append(f)
     except Exception as e:
         log(f"Scheduled task scan error: {e}")
@@ -276,30 +362,54 @@ Get-CimInstance Win32_Service | Where-Object {$_.StartMode -in @('Auto','Manual'
   Select-Object Name,DisplayName,PathName,StartMode,ProcessId |
   ConvertTo-Json -Depth 2
 """
-        r2 = subprocess.run(["powershell","-NoProfile","-NonInteractive","-Command", ps2],
-                            capture_output=True, text=True, timeout=30)
+        r2 = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps2],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
         if r2.returncode == 0 and r2.stdout.strip():
             svcs = json.loads(r2.stdout)
-            if isinstance(svcs, dict): svcs = [svcs]
-            for svc in (svcs or []):
+            if isinstance(svcs, dict):
+                svcs = [svcs]
+            for svc in svcs or []:
                 pname = (svc.get("PathName") or "").lower()
-                name  = svc.get("Name","")
+                name = svc.get("Name", "")
                 svc_pid = svc.get("ProcessId") or None
                 sev = "INFO"
                 reason = ""
-                if any(x in pname+name.lower() for x in ["openclaw","metaquest","oculus","ovrservice","airlink"]):
+                if any(
+                    x in pname + name.lower()
+                    for x in [
+                        "openclaw",
+                        "metaquest",
+                        "oculus",
+                        "ovrservice",
+                        "airlink",
+                    ]
+                ):
                     sev = "HIGH"
                     reason = f"Service related to openclaw/Meta Quest: {svc.get('PathName','')}"
-                elif any(x in pname for x in ["\\temp\\","\\tmp\\","\\downloads\\","\\appdata\\roaming\\"]):
+                elif any(
+                    x in pname
+                    for x in [
+                        "\\temp\\",
+                        "\\tmp\\",
+                        "\\downloads\\",
+                        "\\appdata\\roaming\\",
+                    ]
+                ):
                     sev = "HIGH"
-                    reason = f"Service binary in suspicious path: {svc.get('PathName','')}"
+                    reason = (
+                        f"Service binary in suspicious path: {svc.get('PathName','')}"
+                    )
                 if sev != "INFO":
                     f = {
-                        "title":       f"Service: {svc.get('DisplayName', name)}",
-                        "path":        svc.get("PathName",""),
-                        "reason":      reason,
-                        "severity":    sev,
-                        "category":    "persistence",
+                        "title": f"Service: {svc.get('DisplayName', name)}",
+                        "path": svc.get("PathName", ""),
+                        "reason": reason,
+                        "severity": sev,
+                        "category": "persistence",
                         "subcategory": "service",
                     }
                     if svc_pid and int(svc_pid) > 0:
@@ -315,6 +425,7 @@ Get-CimInstance Win32_Service | Where-Object {$_.StartMode -in @('Auto','Manual'
 def scan_yara(path: str, rules_dir: str) -> List[Dict]:
     try:
         import yara_scanner
+
         result = yara_scanner.scan_yara(path, rules_dir)
         return result.get("findings", [])
     except ImportError:
@@ -329,6 +440,7 @@ def scan_yara(path: str, rules_dir: str) -> List[Dict]:
 def scan_heuristics(path: str) -> List[Dict]:
     try:
         import heuristics
+
         result = heuristics.scan_heuristics(path)
         return result.get("findings", [])
     except ImportError:
@@ -343,6 +455,7 @@ def scan_heuristics(path: str) -> List[Dict]:
 def scan_events(hours: int) -> List[Dict]:
     try:
         import event_parser
+
         result = event_parser.scan_events(hours)
         return result.get("findings", [])
     except ImportError:
@@ -357,6 +470,7 @@ def scan_events(hours: int) -> List[Dict]:
 def scan_npm() -> List[Dict]:
     try:
         import npm_check
+
         result = npm_check.scan_npm()
         return result.get("findings", [])
     except ImportError:
@@ -371,6 +485,7 @@ def scan_npm() -> List[Dict]:
 def scan_processes() -> List[Dict]:
     try:
         import process_scanner
+
         result = process_scanner.scan_processes()
         return result.get("findings", [])
     except ImportError:
@@ -385,6 +500,7 @@ def scan_processes() -> List[Dict]:
 def scan_network_module() -> List[Dict]:
     try:
         import network_scanner
+
         return network_scanner.scan_network()
     except ImportError:
         log("network_scanner module missing")
@@ -398,6 +514,7 @@ def scan_network_module() -> List[Dict]:
 def scan_winsec_module() -> List[Dict]:
     try:
         import winsec_scanner
+
         return winsec_scanner.scan_winsec()
     except ImportError:
         log("winsec_scanner module missing")
@@ -411,6 +528,7 @@ def scan_winsec_module() -> List[Dict]:
 def scan_rootkit_module() -> List[Dict]:
     try:
         import rootkit_scanner
+
         return rootkit_scanner.scan_rootkit()
     except ImportError:
         log("rootkit_scanner module missing")
@@ -424,6 +542,7 @@ def scan_rootkit_module() -> List[Dict]:
 def scan_ads_module() -> List[Dict]:
     try:
         import ads_scanner
+
         return ads_scanner.scan_ads()
     except ImportError:
         log("ads_scanner module missing")
@@ -437,6 +556,7 @@ def scan_ads_module() -> List[Dict]:
 def scan_browser_module() -> List[Dict]:
     try:
         import browser_scanner
+
         return browser_scanner.scan_browser()
     except ImportError:
         log("browser_scanner module missing")
@@ -450,6 +570,7 @@ def scan_browser_module() -> List[Dict]:
 def scan_defender_module() -> List[Dict]:
     try:
         import wdefender_integration
+
         return wdefender_integration.scan_defender()
     except ImportError:
         log("wdefender_integration module missing")
@@ -463,6 +584,7 @@ def scan_defender_module() -> List[Dict]:
 def scan_credential_module() -> List[Dict]:
     try:
         import credential_scanner
+
         return credential_scanner.scan_credentials()
     except ImportError:
         log("credential_scanner module missing")
@@ -476,6 +598,7 @@ def scan_credential_module() -> List[Dict]:
 def scan_kev_module() -> List[Dict]:
     try:
         import cisa_kev_scanner
+
         return cisa_kev_scanner.scan_cisa_kev()
     except ImportError:
         log("cisa_kev_scanner module missing")
@@ -488,21 +611,23 @@ def scan_kev_module() -> List[Dict]:
 # ── Entry point ───────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="WRAITH Scanner")
-    parser.add_argument("--mode",  default="all",  help="Scan mode")
-    parser.add_argument("--path",  default=r"C:\\", help="Scan root path")
-    parser.add_argument("--hours", type=int, default=72, help="Event log lookback hours")
+    parser.add_argument("--mode", default="all", help="Scan mode")
+    parser.add_argument("--path", default=r"C:\\", help="Scan root path")
+    parser.add_argument(
+        "--hours", type=int, default=72, help="Event log lookback hours"
+    )
     parser.add_argument("--rules", default="rules", help="YARA rules directory")
     args = parser.parse_args()
 
-    mode      = args.mode.lower()
+    mode = args.mode.lower()
     scan_path = args.path
-    hours     = args.hours
+    hours = args.hours
     rules_dir = args.rules
 
     log(f"WRAITH scanner starting: mode={mode} path={scan_path} hours={hours}")
 
     findings: List[Dict] = []
-    error: str | None    = None
+    error: str | None = None
 
     try:
         if mode == "persistence":

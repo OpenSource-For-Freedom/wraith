@@ -121,11 +121,14 @@ CRITICAL_DLLS = [
 # Helpers
 # ──────────────────────────────────────────────
 
+
 def _run_ps(cmd: str, timeout: int = 30) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
         return result.stdout.strip()
     except Exception:
@@ -145,6 +148,7 @@ def _run_cmd(cmd: str, timeout: int = 20) -> str:
 # ──────────────────────────────────────────────
 # Check 1: Ghost process detection
 # ──────────────────────────────────────────────
+
 
 def check_ghost_processes() -> List[Dict]:
     """
@@ -189,28 +193,37 @@ def check_ghost_processes() -> List[Dict]:
     # Processes in tasklist but NOT in WMI → potentially hidden from WMI
     # Filter transient names that appear only because they ran during the scan
     TRANSIENT_NAMES = {
-        "cmd.exe", "tasklist.exe", "conhost.exe", "python.exe", "python3.exe",
-        "powershell.exe", "wmic.exe", "wmiprvse.exe", "dllhost.exe",
+        "cmd.exe",
+        "tasklist.exe",
+        "conhost.exe",
+        "python.exe",
+        "python3.exe",
+        "powershell.exe",
+        "wmic.exe",
+        "wmiprvse.exe",
+        "dllhost.exe",
     }
     if wmi_procs and task_procs:
         for pid, name in task_procs.items():
             if name.lower() in TRANSIENT_NAMES:
                 continue
             if pid not in wmi_procs and pid not in (0, 4):  # skip Idle/System
-                findings.append({
-                    "title":       f"Process hidden from WMI: {name} (PID {pid})",
-                    "path":        f"PID:{pid}",
-                    "reason":      (
-                        f"Process '{name}' (PID {pid}) is visible in tasklist but "
-                        "absent from WMI Win32_Process enumeration. Rootkits often "
-                        "hook WMI providers to conceal themselves while the underlying "
-                        "process remains scheduled by the kernel."
-                    ),
-                    "severity":    "CRITICAL",
-                    "category":    "rootkit",
-                    "subcategory": "ghost_process",
-                    "pid":         pid,
-                })
+                findings.append(
+                    {
+                        "title": f"Process hidden from WMI: {name} (PID {pid})",
+                        "path": f"PID:{pid}",
+                        "reason": (
+                            f"Process '{name}' (PID {pid}) is visible in tasklist but "
+                            "absent from WMI Win32_Process enumeration. Rootkits often "
+                            "hook WMI providers to conceal themselves while the underlying "
+                            "process remains scheduled by the kernel."
+                        ),
+                        "severity": "CRITICAL",
+                        "category": "rootkit",
+                        "subcategory": "ghost_process",
+                        "pid": pid,
+                    }
+                )
 
     return findings
 
@@ -218,6 +231,7 @@ def check_ghost_processes() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 2: Unsigned kernel drivers
 # ──────────────────────────────────────────────
+
 
 def check_unsigned_drivers() -> List[Dict]:
     """
@@ -260,9 +274,7 @@ def check_unsigned_drivers() -> List[Dict]:
 
         # Skip kernel-embedded paths
         if driver_path.lower().startswith(r"\systemroot"):
-            driver_path = driver_path.lower().replace(
-                r"\systemroot", r"c:\windows"
-            )
+            driver_path = driver_path.lower().replace(r"\systemroot", r"c:\windows")
 
         # Check if path is outside normal driver dirs
         norm = driver_path.lower().replace("/", "\\")
@@ -278,49 +290,58 @@ def check_unsigned_drivers() -> List[Dict]:
         if sig_status in ("", "UnknownError"):
             continue  # file not found or can't check
 
-        if sig_status not in ("Valid", "NotSigned") and "valid" not in sig_status.lower():
-            findings.append({
-                "title":       f"Driver with invalid signature: {name}",
-                "path":        driver_path,
-                "reason":      (
-                    f"Kernel driver '{name}' has Authenticode status '{sig_status}'. "
-                    "Revoked, tampered, or forged driver signatures are used by "
-                    "sophisticated rootkits (e.g., UEFI implants, bootkits) to "
-                    "load malicious kernel code while evading basic integrity checks."
-                ),
-                "severity":    "CRITICAL",
-                "category":    "rootkit",
-                "subcategory": "unsigned_driver",
-            })
+        if (
+            sig_status not in ("Valid", "NotSigned")
+            and "valid" not in sig_status.lower()
+        ):
+            findings.append(
+                {
+                    "title": f"Driver with invalid signature: {name}",
+                    "path": driver_path,
+                    "reason": (
+                        f"Kernel driver '{name}' has Authenticode status '{sig_status}'. "
+                        "Revoked, tampered, or forged driver signatures are used by "
+                        "sophisticated rootkits (e.g., UEFI implants, bootkits) to "
+                        "load malicious kernel code while evading basic integrity checks."
+                    ),
+                    "severity": "CRITICAL",
+                    "category": "rootkit",
+                    "subcategory": "unsigned_driver",
+                }
+            )
         elif sig_status == "NotSigned":
             severity = "HIGH" if not in_valid else "MEDIUM"
-            findings.append({
-                "title":       f"Unsigned kernel driver: {name}",
-                "path":        driver_path,
-                "reason":      (
-                    f"Kernel driver '{name}' is not Authenticode signed. On 64-bit "
-                    "Windows, all kernel drivers must be signed. Unsigned drivers "
-                    "loaded via a test-signing or exploit bypass indicate potential "
-                    "rootkit installation. Path: {driver_path}"
-                ),
-                "severity":    severity,
-                "category":    "rootkit",
-                "subcategory": "unsigned_driver",
-            })
+            findings.append(
+                {
+                    "title": f"Unsigned kernel driver: {name}",
+                    "path": driver_path,
+                    "reason": (
+                        f"Kernel driver '{name}' is not Authenticode signed. On 64-bit "
+                        "Windows, all kernel drivers must be signed. Unsigned drivers "
+                        "loaded via a test-signing or exploit bypass indicate potential "
+                        "rootkit installation. Path: {driver_path}"
+                    ),
+                    "severity": severity,
+                    "category": "rootkit",
+                    "subcategory": "unsigned_driver",
+                }
+            )
         elif not in_valid:
-            findings.append({
-                "title":       f"Driver loaded from non-standard path: {name}",
-                "path":        driver_path,
-                "reason":      (
-                    f"Driver '{name}' is signed but loaded from an unusual path: "
-                    f"'{driver_path}'. Legitimate Windows drivers load from "
-                    r"System32\drivers or a vendor-registered Program Files location. "
-                    "Rootkits may copy themselves to temp dirs and register as services."
-                ),
-                "severity":    "HIGH",
-                "category":    "rootkit",
-                "subcategory": "driver_path",
-            })
+            findings.append(
+                {
+                    "title": f"Driver loaded from non-standard path: {name}",
+                    "path": driver_path,
+                    "reason": (
+                        f"Driver '{name}' is signed but loaded from an unusual path: "
+                        f"'{driver_path}'. Legitimate Windows drivers load from "
+                        r"System32\drivers or a vendor-registered Program Files location. "
+                        "Rootkits may copy themselves to temp dirs and register as services."
+                    ),
+                    "severity": "HIGH",
+                    "category": "rootkit",
+                    "subcategory": "driver_path",
+                }
+            )
 
     return findings
 
@@ -328,6 +349,7 @@ def check_unsigned_drivers() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 3: Hidden service detection
 # ──────────────────────────────────────────────
+
 
 def check_hidden_services() -> List[Dict]:
     """
@@ -337,14 +359,8 @@ def check_hidden_services() -> List[Dict]:
     findings = []
 
     # WMI service names
-    wmi_svc_out = _run_ps(
-        "Get-WmiObject Win32_Service | Select-Object -Expand Name"
-    )
-    wmi_services = set(
-        s.strip().lower()
-        for s in wmi_svc_out.splitlines()
-        if s.strip()
-    )
+    wmi_svc_out = _run_ps("Get-WmiObject Win32_Service | Select-Object -Expand Name")
+    wmi_services = set(s.strip().lower() for s in wmi_svc_out.splitlines() if s.strip())
 
     # sc query — restrict to type=service to match WMI Win32_Service scope
     # Parse the full sc output to only include WIN32_*_PROCESS services,
@@ -370,17 +386,58 @@ def check_hidden_services() -> List[Dict]:
     # or not at all. Keeping this list prevents noisy false positives.
     KNOWN_SAFE_SERVICES = {
         # Common vendor short names
-        "amd", "apple", "bonjour", "razer", "steam", "tenable",
-        "nvidia", "intel", "lenovo", "dell", "hp", "realtek", "qualcomm",
-        "onedrive", "dropbox", "googledrive", "google", "microsoft",
-        "adobe", "vmware", "virtualbox", "vbox", "citrix",
-        "symantec", "mcafee", "trend", "kaspersky", "malwarebytes",
-        "cylance", "crowdstrike", "sentinelone", "carbon",
-        "docker", "kubernetes",
+        "amd",
+        "apple",
+        "bonjour",
+        "razer",
+        "steam",
+        "tenable",
+        "nvidia",
+        "intel",
+        "lenovo",
+        "dell",
+        "hp",
+        "realtek",
+        "qualcomm",
+        "onedrive",
+        "dropbox",
+        "googledrive",
+        "google",
+        "microsoft",
+        "adobe",
+        "vmware",
+        "virtualbox",
+        "vbox",
+        "citrix",
+        "symantec",
+        "mcafee",
+        "trend",
+        "kaspersky",
+        "malwarebytes",
+        "cylance",
+        "crowdstrike",
+        "sentinelone",
+        "carbon",
+        "docker",
+        "kubernetes",
         # Legacy/compatibility store artifacts
-        "appreadiness", "ndu", "ndis", "tcpip", "netbt",
-        "afunix", "afd", "beep", "null", "dam", "pdc", "pcw",
-        "rdyboost", "wfplwfs", "wanarpv6", "wanarap", "mslldp",
+        "appreadiness",
+        "ndu",
+        "ndis",
+        "tcpip",
+        "netbt",
+        "afunix",
+        "afd",
+        "beep",
+        "null",
+        "dam",
+        "pdc",
+        "pcw",
+        "rdyboost",
+        "wfplwfs",
+        "wanarpv6",
+        "wanarap",
+        "mslldp",
     }
 
     # In sc but not WMI → hidden from WMI
@@ -389,24 +446,37 @@ def check_hidden_services() -> List[Dict]:
         if svc in KNOWN_SAFE_SERVICES:
             continue
         # Also skip by known-safe prefix
-        if any(svc.startswith(p) for p in (
-            "amd", "nvidia", "intel", "razer", "steam", "apple",
-            "tenable", "google", "microsoft", "adobe",
-        )):
+        if any(
+            svc.startswith(p)
+            for p in (
+                "amd",
+                "nvidia",
+                "intel",
+                "razer",
+                "steam",
+                "apple",
+                "tenable",
+                "google",
+                "microsoft",
+                "adobe",
+            )
+        ):
             continue
-        findings.append({
-            "title":       f"Service hidden from WMI: {svc}",
-            "path":        f"Service:{svc}",
-            "reason":      (
-                f"Service '{svc}' appears in sc query output but is absent from "
-                "WMI Win32_Service enumeration. This discrepancy is a classic sign "
-                "of a WMI provider hook used by rootkits (e.g., ZeroAccess, TDL4) "
-                "to hide malicious services from management tools."
-            ),
-            "severity":    "CRITICAL",
-            "category":    "rootkit",
-            "subcategory": "hidden_service",
-        })
+        findings.append(
+            {
+                "title": f"Service hidden from WMI: {svc}",
+                "path": f"Service:{svc}",
+                "reason": (
+                    f"Service '{svc}' appears in sc query output but is absent from "
+                    "WMI Win32_Service enumeration. This discrepancy is a classic sign "
+                    "of a WMI provider hook used by rootkits (e.g., ZeroAccess, TDL4) "
+                    "to hide malicious services from management tools."
+                ),
+                "severity": "CRITICAL",
+                "category": "rootkit",
+                "subcategory": "hidden_service",
+            }
+        )
 
     return findings
 
@@ -414,6 +484,7 @@ def check_hidden_services() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 4: Suspicious prefetch artifacts
 # ──────────────────────────────────────────────
+
 
 def check_prefetch() -> List[Dict]:
     """
@@ -437,26 +508,29 @@ def check_prefetch() -> List[Dict]:
                 try:
                     mtime = pf_file.stat().st_mtime
                     import datetime
+
                     last_run = datetime.datetime.fromtimestamp(mtime).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
                 except Exception:
                     last_run = "unknown"
 
-                findings.append({
-                    "title":       f"Attack tool prefetch found: {pf_file.name}",
-                    "path":        str(pf_file),
-                    "reason":      (
-                        f"Prefetch entry '{pf_file.name}' was last updated {last_run}. "
-                        "Windows Prefetch records execution of binaries and persists "
-                        "for 10-30 days even if the attacker deletes the source file. "
-                        "This file matches known attack/credential-harvesting tools."
-                    ),
-                    "severity":    "CRITICAL",
-                    "category":    "rootkit",
-                    "subcategory": "prefetch_artifact",
-                    "last_run":    last_run if last_run != "unknown" else None,
-                })
+                findings.append(
+                    {
+                        "title": f"Attack tool prefetch found: {pf_file.name}",
+                        "path": str(pf_file),
+                        "reason": (
+                            f"Prefetch entry '{pf_file.name}' was last updated {last_run}. "
+                            "Windows Prefetch records execution of binaries and persists "
+                            "for 10-30 days even if the attacker deletes the source file. "
+                            "This file matches known attack/credential-harvesting tools."
+                        ),
+                        "severity": "CRITICAL",
+                        "category": "rootkit",
+                        "subcategory": "prefetch_artifact",
+                        "last_run": last_run if last_run != "unknown" else None,
+                    }
+                )
     except PermissionError:
         pass  # requires elevation for full prefetch access
 
@@ -466,6 +540,7 @@ def check_prefetch() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 5: Driver loaded from temp / user dirs
 # ──────────────────────────────────────────────
+
 
 def check_driver_paths() -> List[Dict]:
     """
@@ -498,20 +573,22 @@ def check_driver_paths() -> List[Dict]:
             name = str(d.get("Name", ""))
             for frag in SUSPICIOUS_PATH_FRAGMENTS:
                 if frag in path:
-                    findings.append({
-                        "title":       f"Driver in suspicious directory: {name}",
-                        "path":        str(d.get("PathName", "")),
-                        "reason":      (
-                            f"Kernel driver '{name}' is registered with a path "
-                            f"'{d.get('PathName','')}' containing '{frag}'. "
-                            "Legitimate kernel drivers are never installed in user "
-                            "temp directories. This is a strong indicator of a "
-                            "manually-loaded rootkit or kernel exploit payload."
-                        ),
-                        "severity":    "CRITICAL",
-                        "category":    "rootkit",
-                        "subcategory": "driver_path",
-                    })
+                    findings.append(
+                        {
+                            "title": f"Driver in suspicious directory: {name}",
+                            "path": str(d.get("PathName", "")),
+                            "reason": (
+                                f"Kernel driver '{name}' is registered with a path "
+                                f"'{d.get('PathName','')}' containing '{frag}'. "
+                                "Legitimate kernel drivers are never installed in user "
+                                "temp directories. This is a strong indicator of a "
+                                "manually-loaded rootkit or kernel exploit payload."
+                            ),
+                            "severity": "CRITICAL",
+                            "category": "rootkit",
+                            "subcategory": "driver_path",
+                        }
+                    )
                     break
     except Exception:
         pass
@@ -523,6 +600,7 @@ def check_driver_paths() -> List[Dict]:
 # Check 6: Test-signing mode enabled
 # ──────────────────────────────────────────────
 
+
 def check_test_signing() -> List[Dict]:
     """
     Test-signing mode bypasses Windows driver signature enforcement (DSE),
@@ -532,36 +610,40 @@ def check_test_signing() -> List[Dict]:
     out = _run_cmd("bcdedit /enum {current}")
     # Look for 'testsigning Yes'
     if re.search(r"testsigning\s+yes", out, re.IGNORECASE):
-        findings.append({
-            "title":       "Test-Signing Mode Enabled (DSE Bypass)",
-            "path":        "BCD:{current}",
-            "reason":      (
-                "Boot Configuration Data shows 'testsigning Yes'. This disables "
-                "Driver Signature Enforcement (DSE), allowing unsigned and "
-                "attacker-supplied kernel drivers to load. This setting is used "
-                "by rootkits such as TDL4, Necurs, and ZeroAccess to persist in "
-                "the kernel without a valid Authenticode certificate."
-            ),
-            "severity":    "CRITICAL",
-            "category":    "rootkit",
-            "subcategory": "test_signing",
-        })
+        findings.append(
+            {
+                "title": "Test-Signing Mode Enabled (DSE Bypass)",
+                "path": "BCD:{current}",
+                "reason": (
+                    "Boot Configuration Data shows 'testsigning Yes'. This disables "
+                    "Driver Signature Enforcement (DSE), allowing unsigned and "
+                    "attacker-supplied kernel drivers to load. This setting is used "
+                    "by rootkits such as TDL4, Necurs, and ZeroAccess to persist in "
+                    "the kernel without a valid Authenticode certificate."
+                ),
+                "severity": "CRITICAL",
+                "category": "rootkit",
+                "subcategory": "test_signing",
+            }
+        )
 
     # Also check kernel debug mode (also allows unsigned driver load)
     if re.search(r"debug\s+yes", out, re.IGNORECASE):
-        findings.append({
-            "title":       "Kernel Debug Mode Enabled",
-            "path":        "BCD:{current}",
-            "reason":      (
-                "Boot Configuration Data shows 'debug Yes'. Kernel debug mode "
-                "disables DSE and allows live kernel patching. While legitimate "
-                "for developers, it is also used by rootkits to disable driver "
-                "signature enforcement on compromised systems."
-            ),
-            "severity":    "HIGH",
-            "category":    "rootkit",
-            "subcategory": "kernel_debug",
-        })
+        findings.append(
+            {
+                "title": "Kernel Debug Mode Enabled",
+                "path": "BCD:{current}",
+                "reason": (
+                    "Boot Configuration Data shows 'debug Yes'. Kernel debug mode "
+                    "disables DSE and allows live kernel patching. While legitimate "
+                    "for developers, it is also used by rootkits to disable driver "
+                    "signature enforcement on compromised systems."
+                ),
+                "severity": "HIGH",
+                "category": "rootkit",
+                "subcategory": "kernel_debug",
+            }
+        )
 
     return findings
 
@@ -569,6 +651,7 @@ def check_test_signing() -> List[Dict]:
 # ──────────────────────────────────────────────
 # Check 7: Known rootkit registry keys
 # ──────────────────────────────────────────────
+
 
 def check_rootkit_registry() -> List[Dict]:
     """
@@ -579,35 +662,61 @@ def check_rootkit_registry() -> List[Dict]:
 
     ROOTKIT_KEYS = [
         # ZeroAccess (GUID-named service key — should never exist legitimately)
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\{GUID}", "ZeroAccess"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\{GUID}",
+            "ZeroAccess",
+        ),
         # Necurs rootkit service
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\necurs", "Necurs"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\necurs",
+            "Necurs",
+        ),
         # Shamoon wiper driver
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\hdv_725x", "Shamoon"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\hdv_725x",
+            "Shamoon",
+        ),
         # Azazel / Adore rootkit
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\adore", "Adore/Azazel"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\adore",
+            "Adore/Azazel",
+        ),
         # WannaCry / NotPetya remnant
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\mssecsvc2.0", "WannaCry"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\mssecsvc2.0",
+            "WannaCry",
+        ),
         # Cobalt Strike named-pipe default
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\MSDTC Bridge", "CobaltStrike"),
+        (
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Services\MSDTC Bridge",
+            "CobaltStrike",
+        ),
     ]
 
     for hive, subkey, family in ROOTKIT_KEYS:
         try:
             with winreg.OpenKey(hive, subkey):
-                findings.append({
-                    "title":       f"Known Rootkit Registry Key: {family}",
-                    "path":        f"HKLM\\{subkey}",
-                    "reason":      (
-                        f"Registry key associated with the '{family}' rootkit/malware "
-                        f"family was found at 'HKLM\\{subkey}'. This key is "
-                        "created by the malware during installation and typically "
-                        "persists even after process termination."
-                    ),
-                    "severity":    "CRITICAL",
-                    "category":    "rootkit",
-                    "subcategory": "known_rootkit_key",
-                })
+                findings.append(
+                    {
+                        "title": f"Known Rootkit Registry Key: {family}",
+                        "path": f"HKLM\\{subkey}",
+                        "reason": (
+                            f"Registry key associated with the '{family}' rootkit/malware "
+                            f"family was found at 'HKLM\\{subkey}'. This key is "
+                            "created by the malware during installation and typically "
+                            "persists even after process termination."
+                        ),
+                        "severity": "CRITICAL",
+                        "category": "rootkit",
+                        "subcategory": "known_rootkit_key",
+                    }
+                )
         except FileNotFoundError:
             pass
         except PermissionError:
@@ -624,21 +733,23 @@ def check_rootkit_registry() -> List[Dict]:
             try:
                 debugger, _ = winreg.QueryValueEx(k, "Debugger")
                 if debugger:
-                    findings.append({
-                        "title":       "IFEO Debugger Set on svchost.exe",
-                        "path":        r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe",
-                        "reason":      (
-                            f"Image File Execution Options 'Debugger' value is set to "
-                            f"'{debugger}' for svchost.exe. This causes every svchost "
-                            "invocation to launch the attacker-specified executable "
-                            "instead, enabling persistent code execution with SYSTEM "
-                            "privileges. This technique is used by ZeroAccess and "
-                            "other rootkits."
-                        ),
-                        "severity":    "CRITICAL",
-                        "category":    "rootkit",
-                        "subcategory": "ifeo_hook",
-                    })
+                    findings.append(
+                        {
+                            "title": "IFEO Debugger Set on svchost.exe",
+                            "path": r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe",
+                            "reason": (
+                                f"Image File Execution Options 'Debugger' value is set to "
+                                f"'{debugger}' for svchost.exe. This causes every svchost "
+                                "invocation to launch the attacker-specified executable "
+                                "instead, enabling persistent code execution with SYSTEM "
+                                "privileges. This technique is used by ZeroAccess and "
+                                "other rootkits."
+                            ),
+                            "severity": "CRITICAL",
+                            "category": "rootkit",
+                            "subcategory": "ifeo_hook",
+                        }
+                    )
             except FileNotFoundError:
                 pass
     except Exception:
@@ -651,6 +762,7 @@ def check_rootkit_registry() -> List[Dict]:
 # Check 8: PID gap analysis (DKOM indicator)
 # ──────────────────────────────────────────────
 
+
 def check_pid_gaps() -> List[Dict]:
     """
     On Windows, PIDs are assigned in multiples of 4.
@@ -662,9 +774,7 @@ def check_pid_gaps() -> List[Dict]:
     """
     findings = []
 
-    wmi_out = _run_ps(
-        "Get-WmiObject Win32_Process | Select-Object -Expand ProcessId"
-    )
+    wmi_out = _run_ps("Get-WmiObject Win32_Process | Select-Object -Expand ProcessId")
     pids = []
     for line in wmi_out.splitlines():
         try:
@@ -681,21 +791,23 @@ def check_pid_gaps() -> List[Dict]:
         # Only flag gaps in the lower PID range (< 5000) because high PIDs
         # are common for deferred/session processes
         if gap > 500 and pids_sorted[i - 1] < 5000:
-            findings.append({
-                "title":       f"Suspicious PID gap: {pids_sorted[i-1]} → {pids_sorted[i]}",
-                "path":        f"PID:{pids_sorted[i-1]}-{pids_sorted[i]}",
-                "reason":      (
-                    f"A gap of {gap} in the PID sequence between "
-                    f"PID {pids_sorted[i-1]} and PID {pids_sorted[i]} was detected "
-                    "in the low PID range. DKOM rootkits hide processes by unlinking "
-                    "their EPROCESS structure from the kernel's process list while the "
-                    "process continues to run, leaving a PID gap. This is a low-confidence "
-                    "heuristic — verify with a memory forensics tool (e.g., Volatility)."
-                ),
-                "severity":    "LOW",
-                "category":    "rootkit",
-                "subcategory": "pid_gap",
-            })
+            findings.append(
+                {
+                    "title": f"Suspicious PID gap: {pids_sorted[i-1]} → {pids_sorted[i]}",
+                    "path": f"PID:{pids_sorted[i-1]}-{pids_sorted[i]}",
+                    "reason": (
+                        f"A gap of {gap} in the PID sequence between "
+                        f"PID {pids_sorted[i-1]} and PID {pids_sorted[i]} was detected "
+                        "in the low PID range. DKOM rootkits hide processes by unlinking "
+                        "their EPROCESS structure from the kernel's process list while the "
+                        "process continues to run, leaving a PID gap. This is a low-confidence "
+                        "heuristic — verify with a memory forensics tool (e.g., Volatility)."
+                    ),
+                    "severity": "LOW",
+                    "category": "rootkit",
+                    "subcategory": "pid_gap",
+                }
+            )
 
     return findings
 
@@ -704,17 +816,18 @@ def check_pid_gaps() -> List[Dict]:
 # Entry point
 # ──────────────────────────────────────────────
 
+
 def scan_rootkit() -> List[Dict]:
     findings: List[Dict] = []
     checks = [
-        ("ghost_processes",   check_ghost_processes),
-        ("unsigned_drivers",  check_unsigned_drivers),
-        ("hidden_services",   check_hidden_services),
-        ("prefetch",          check_prefetch),
-        ("driver_paths",      check_driver_paths),
-        ("test_signing",      check_test_signing),
-        ("rootkit_registry",  check_rootkit_registry),
-        ("pid_gaps",          check_pid_gaps),
+        ("ghost_processes", check_ghost_processes),
+        ("unsigned_drivers", check_unsigned_drivers),
+        ("hidden_services", check_hidden_services),
+        ("prefetch", check_prefetch),
+        ("driver_paths", check_driver_paths),
+        ("test_signing", check_test_signing),
+        ("rootkit_registry", check_rootkit_registry),
+        ("pid_gaps", check_pid_gaps),
     ]
     for name, fn in checks:
         try:
@@ -729,10 +842,12 @@ def scan_rootkit() -> List[Dict]:
 if __name__ == "__main__":
     sys.stderr.write("[WRAITH-ROOTKIT] Rootkit & stealth malware scan starting...\n")
     results = scan_rootkit()
-    sys.stderr.write(f"[WRAITH-ROOTKIT] Rootkit scan complete: {len(results)} findings\n")
+    sys.stderr.write(
+        f"[WRAITH-ROOTKIT] Rootkit scan complete: {len(results)} findings\n"
+    )
     output = {
-        "scanner":  "WRAITH-rootkit",
-        "mode":     "rootkit",
+        "scanner": "WRAITH-rootkit",
+        "mode": "rootkit",
         "findings": results,
     }
     print(json.dumps(output, indent=2))

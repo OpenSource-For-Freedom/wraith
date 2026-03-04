@@ -13,12 +13,14 @@ try:
     import win32evtlog
     import win32con
     import win32evtlogutil
+
     WIN32_AVAILABLE = True
 except ImportError:
     WIN32_AVAILABLE = False
 
 try:
     import subprocess
+
     SUBPROCESS_AVAILABLE = True
 except ImportError:
     SUBPROCESS_AVAILABLE = False
@@ -26,49 +28,83 @@ except ImportError:
 # ── Event ID mappings (Windows Security / Sysmon style) ─────────────────
 CRITICAL_EVENT_IDS = {
     # Security log
-    4624: ("Logon Success",           "INFO",    "Account logged on"),
-    4625: ("Failed Logon",            "MEDIUM",  "Failed login attempt"),
-    4648: ("Explicit Credential Use", "HIGH",    "Logon with explicit credentials (pass-the-hash?)"),
-    4672: ("Special Privileges",      "MEDIUM",  "Admin privileges assigned at logon"),
-    4688: ("New Process Created",     "LOW",     "Process creation event"),
-    4697: ("Service Installed",       "HIGH",    "New service installed on system"),
-    4698: ("Schtask Created",         "HIGH",    "Scheduled task created"),
-    4699: ("Schtask Deleted",         "MEDIUM",  "Scheduled task deleted"),
-    4700: ("Schtask Enabled",         "MEDIUM",  "Scheduled task enabled"),
-    4702: ("Schtask Modified",        "MEDIUM",  "Scheduled task modified"),
-    4720: ("Account Created",         "HIGH",    "New user account created"),
-    4732: ("Group Membership Change", "HIGH",    "User added to local admin group"),
-    4756: ("Group Membership Change", "HIGH",    "User added to universal group"),
-    1102: ("Audit Log Cleared",       "CRITICAL","Security audit log was cleared — common attacker technique"),
-    4104: ("PS Script Block",         "MEDIUM",  "PowerShell script block logging"),
-    4103: ("PS Module Logging",       "MEDIUM",  "PowerShell module logging"),
+    4624: ("Logon Success", "INFO", "Account logged on"),
+    4625: ("Failed Logon", "MEDIUM", "Failed login attempt"),
+    4648: (
+        "Explicit Credential Use",
+        "HIGH",
+        "Logon with explicit credentials (pass-the-hash?)",
+    ),
+    4672: ("Special Privileges", "MEDIUM", "Admin privileges assigned at logon"),
+    4688: ("New Process Created", "LOW", "Process creation event"),
+    4697: ("Service Installed", "HIGH", "New service installed on system"),
+    4698: ("Schtask Created", "HIGH", "Scheduled task created"),
+    4699: ("Schtask Deleted", "MEDIUM", "Scheduled task deleted"),
+    4700: ("Schtask Enabled", "MEDIUM", "Scheduled task enabled"),
+    4702: ("Schtask Modified", "MEDIUM", "Scheduled task modified"),
+    4720: ("Account Created", "HIGH", "New user account created"),
+    4732: ("Group Membership Change", "HIGH", "User added to local admin group"),
+    4756: ("Group Membership Change", "HIGH", "User added to universal group"),
+    1102: (
+        "Audit Log Cleared",
+        "CRITICAL",
+        "Security audit log was cleared — common attacker technique",
+    ),
+    4104: ("PS Script Block", "MEDIUM", "PowerShell script block logging"),
+    4103: ("PS Module Logging", "MEDIUM", "PowerShell module logging"),
     # System log
-    7045: ("Service Installed",       "HIGH",    "New service installed"),
-    7040: ("Service Start Changed",   "MEDIUM",  "Service start type changed"),
-    7034: ("Service Crashed",         "LOW",     "Service terminated unexpectedly"),
+    7045: ("Service Installed", "HIGH", "New service installed"),
+    7040: ("Service Start Changed", "MEDIUM", "Service start type changed"),
+    7034: ("Service Crashed", "LOW", "Service terminated unexpectedly"),
     # Application log
-    1000: ("App Crash",               "LOW",     "Application crash"),
-    1001: ("WER Report",              "LOW",     "Windows Error Reporting"),
+    1000: ("App Crash", "LOW", "Application crash"),
+    1001: ("WER Report", "LOW", "Windows Error Reporting"),
     # PowerShell / WMI
-    400:  ("PS Engine State",         "MEDIUM",  "PowerShell engine started"),
-    403:  ("PS Engine Stopped",       "LOW",     "PowerShell engine stopped"),
-    800:  ("PS Pipeline Exec",        "MEDIUM",  "PowerShell pipeline execution"),
+    400: ("PS Engine State", "MEDIUM", "PowerShell engine started"),
+    403: ("PS Engine Stopped", "LOW", "PowerShell engine stopped"),
+    800: ("PS Pipeline Exec", "MEDIUM", "PowerShell pipeline execution"),
 }
 
 # Suspicious keywords to look for in event messages
 SUSPICIOUS_MESSAGE_KEYWORDS = [
-    "openclaw", "metaquest", "oculus", "ovrservice", "airlink",
-    "powershell -e", "powershell -enc", "encoded",
-    "invoke-expression", "iex", "downloadstring", "webclient",
-    "mshta", "wscript", "cscript", "regsvr32 /s /u",
-    "certutil -decode", "bitsadmin /transfer",
-    "mimikatz", "sekurlsa", "lsadump", "hashdump",
-    "cobalt strike", "beacon", "meterpreter",
-    "base64", "frombase64", "-nop -w hidden",
-    "sc create", "schtasks /create",
-    "netsh advfirewall", "wmic process call create",
-    "npm install", "node_modules", "cline", "package.json",
-    "curl.*pipe.*bash", "wget.*pipe.*sh",
+    "openclaw",
+    "metaquest",
+    "oculus",
+    "ovrservice",
+    "airlink",
+    "powershell -e",
+    "powershell -enc",
+    "encoded",
+    "invoke-expression",
+    "iex",
+    "downloadstring",
+    "webclient",
+    "mshta",
+    "wscript",
+    "cscript",
+    "regsvr32 /s /u",
+    "certutil -decode",
+    "bitsadmin /transfer",
+    "mimikatz",
+    "sekurlsa",
+    "lsadump",
+    "hashdump",
+    "cobalt strike",
+    "beacon",
+    "meterpreter",
+    "base64",
+    "frombase64",
+    "-nop -w hidden",
+    "sc create",
+    "schtasks /create",
+    "netsh advfirewall",
+    "wmic process call create",
+    "npm install",
+    "node_modules",
+    "cline",
+    "package.json",
+    "curl.*pipe.*bash",
+    "wget.*pipe.*sh",
 ]
 
 LOG_NAMES = [
@@ -98,7 +134,10 @@ def scan_events_win32(hours: int) -> List[Dict]:
         try:
             server = None
             hand = win32evtlog.OpenEventLog(server, log_name)
-            flags = win32evtlog.EVENTLOG_BACKWARDS_READ | win32evtlog.EVENTLOG_SEQUENTIAL_READ
+            flags = (
+                win32evtlog.EVENTLOG_BACKWARDS_READ
+                | win32evtlog.EVENTLOG_SEQUENTIAL_READ
+            )
             total = win32evtlog.GetNumberOfEventLogRecords(hand)
 
             while True:
@@ -108,7 +147,7 @@ def scan_events_win32(hours: int) -> List[Dict]:
                 for ev in events:
                     # Time filter
                     ev_time = ev.TimeGenerated
-                    if hasattr(ev_time, 'timestamp'):
+                    if hasattr(ev_time, "timestamp"):
                         ev_dt = datetime.datetime.fromtimestamp(ev_time.timestamp())
                     else:
                         ev_dt = datetime.datetime.now()
@@ -132,47 +171,55 @@ def scan_events_win32(hours: int) -> List[Dict]:
                     suspicious, kw = _keyword_check(msg or "")
 
                     if info and info[1] in ("HIGH", "CRITICAL"):
-                        findings.append({
-                            "category": "events",
-                            "subcategory": log_name.split("/")[0].replace("Microsoft-Windows-",""),
-                            "severity": info[1],
-                            "title": f"[ID:{ev_id}] {info[0]} - {source}",
-                            "path": f"EventLog:{log_name}",
-                            "event_id": ev_id,
-                            "log": log_name,
-                            "source": source,
-                            "computer": computer,
-                            "time": str(ev_dt),
-                            "message_preview": (msg or "")[:300],
-                            "reason": info[2]
-                        })
+                        findings.append(
+                            {
+                                "category": "events",
+                                "subcategory": log_name.split("/")[0].replace(
+                                    "Microsoft-Windows-", ""
+                                ),
+                                "severity": info[1],
+                                "title": f"[ID:{ev_id}] {info[0]} - {source}",
+                                "path": f"EventLog:{log_name}",
+                                "event_id": ev_id,
+                                "log": log_name,
+                                "source": source,
+                                "computer": computer,
+                                "time": str(ev_dt),
+                                "message_preview": (msg or "")[:300],
+                                "reason": info[2],
+                            }
+                        )
                     elif suspicious:
-                        findings.append({
-                            "category": "events",
-                            "subcategory": "suspicious_keyword",
-                            "severity": "HIGH",
-                            "title": f"[ID:{ev_id}] Suspicious Keyword in Event: '{kw}'",
-                            "path": f"EventLog:{log_name}",
-                            "event_id": ev_id,
-                            "log": log_name,
-                            "source": source,
-                            "computer": computer,
-                            "time": str(ev_dt),
-                            "message_preview": (msg or "")[:300],
-                            "reason": f"Event message contains suspicious keyword: '{kw}'"
-                        })
+                        findings.append(
+                            {
+                                "category": "events",
+                                "subcategory": "suspicious_keyword",
+                                "severity": "HIGH",
+                                "title": f"[ID:{ev_id}] Suspicious Keyword in Event: '{kw}'",
+                                "path": f"EventLog:{log_name}",
+                                "event_id": ev_id,
+                                "log": log_name,
+                                "source": source,
+                                "computer": computer,
+                                "time": str(ev_dt),
+                                "message_preview": (msg or "")[:300],
+                                "reason": f"Event message contains suspicious keyword: '{kw}'",
+                            }
+                        )
 
             win32evtlog.CloseEventLog(hand)
 
         except Exception as ex:
-            findings.append({
-                "category": "events",
-                "subcategory": "error",
-                "severity": "INFO",
-                "title": f"Event log scan error: {log_name}",
-                "path": f"EventLog:{log_name}",
-                "reason": str(ex)
-            })
+            findings.append(
+                {
+                    "category": "events",
+                    "subcategory": "error",
+                    "severity": "INFO",
+                    "title": f"Event log scan error: {log_name}",
+                    "path": f"EventLog:{log_name}",
+                    "reason": str(ex),
+                }
+            )
 
     return findings
 
@@ -208,37 +255,54 @@ $results | ConvertTo-Json -Depth 2
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
-            capture_output=True, text=True, timeout=60
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         if result.stdout.strip():
             import json
+
             events_raw = json.loads(result.stdout)
             if isinstance(events_raw, dict):
                 events_raw = [events_raw]
             for ev in events_raw:
                 ev_id = ev.get("Id", 0)
-                info = CRITICAL_EVENT_IDS.get(ev_id, ("Event", "MEDIUM", "Notable event"))
-                msg = ev.get("Msg","")
+                info = CRITICAL_EVENT_IDS.get(
+                    ev_id, ("Event", "MEDIUM", "Notable event")
+                )
+                msg = ev.get("Msg", "")
                 suspicious, kw = _keyword_check(msg)
-                findings.append({
-                    "category": "events",
-                    "subcategory": ev.get("Log",""),
-                    "severity": "CRITICAL" if suspicious and kw in ("openclaw","metaquest","mimikatz") else info[1],
-                    "title": f"[ID:{ev_id}] {info[0]} - {ev.get('Provider','')}",
-                    "path": f"EventLog:{ev.get('Log','')}",
-                    "event_id": ev_id,
-                    "log": ev.get("Log",""),
-                    "source": ev.get("Provider",""),
-                    "time": ev.get("Time",""),
-                    "message_preview": msg[:300],
-                    "reason": f"Keyword match: '{kw}'" if suspicious else info[2]
-                })
+                findings.append(
+                    {
+                        "category": "events",
+                        "subcategory": ev.get("Log", ""),
+                        "severity": (
+                            "CRITICAL"
+                            if suspicious
+                            and kw in ("openclaw", "metaquest", "mimikatz")
+                            else info[1]
+                        ),
+                        "title": f"[ID:{ev_id}] {info[0]} - {ev.get('Provider','')}",
+                        "path": f"EventLog:{ev.get('Log','')}",
+                        "event_id": ev_id,
+                        "log": ev.get("Log", ""),
+                        "source": ev.get("Provider", ""),
+                        "time": ev.get("Time", ""),
+                        "message_preview": msg[:300],
+                        "reason": f"Keyword match: '{kw}'" if suspicious else info[2],
+                    }
+                )
     except Exception as ex:
-        findings.append({
-            "category": "events", "subcategory": "error",
-            "severity": "INFO", "title": "PowerShell event scan error",
-            "path": "EventLog", "reason": str(ex)
-        })
+        findings.append(
+            {
+                "category": "events",
+                "subcategory": "error",
+                "severity": "INFO",
+                "title": "PowerShell event scan error",
+                "path": "EventLog",
+                "reason": str(ex),
+            }
+        )
     return findings
 
 
@@ -252,5 +316,5 @@ def scan_events(hours: int = 72) -> Dict[str, Any]:
         "module": "events",
         "hours_back": hours,
         "findings_count": len(findings),
-        "findings": findings
+        "findings": findings,
     }
