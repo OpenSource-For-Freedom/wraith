@@ -40,12 +40,6 @@ SUSPICIOUS_STRINGS = [
     rb"schtasks.*create",
     rb"sc.*create.*binpath",
     rb"bcdedit.*disable",
-    # Specifically suspicious: openclaw & Meta Quest related
-    rb"openclaw",
-    rb"metaquest",
-    rb"oculus.*inject",
-    rb"OVRservice",
-    rb"AirLink.*autolaunch",
     # npm supply chain attack patterns (cline/similar)
     rb"npm\s+install.*--global.*&&",
     rb"process\.env\.npm_lifecycle",

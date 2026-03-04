@@ -43,7 +43,6 @@ function Add-Finding($severity, $category, $title, $path, $reason) {
 }
 
 $suspiciousKeywords = @(
-    'openclaw','metaquest','oculusservice',
     'powershell.*-e[nc]','invoke-expression','iex\(',
     'downloadstring','frombase64','certutil.*-decode',
     'bitsadmin.*transfer','wscript','cscript','mshta',
@@ -132,10 +131,6 @@ try {
         } elseif ($path -match '\\appdata\\|\\temp\\|\\tmp\\|\\downloads\\') {
             Add-Finding "HIGH" "processes" "Process in Unusual Location: $name (PID $($proc.ProcessId))" $path "Process running from: $path"
         }
-        # openclaw specific
-        if ($name -match 'openclaw|claw' -or $path -match 'openclaw') {
-            Add-Finding "CRITICAL" "processes" "OpenClaw Process Detected! $name (PID $($proc.ProcessId))" $path "OpenClaw is running - check for Meta Quest auth requests at startup"
-        }
     }
 } catch { Write-Warning "Process scan failed: $_" }
 
@@ -165,7 +160,7 @@ foreach ($logName in $logNames) {
             Where-Object { $_.TimeCreated -gt $cutoff } |
             Where-Object {
                 $criticalEventIds.ContainsKey($_.Id) -or
-                $_.Message -match 'openclaw|metaquest|powershell.*-enc|mimikatz|invoke-expression|downloadstring|certutil.*decode|cline|xmrig|stratum'
+                $_.Message -match 'powershell.*-enc|mimikatz|invoke-expression|downloadstring|certutil.*decode|xmrig|stratum|meterpreter|shellcode|beacon|sekurlsa'
             } |
             Select-Object -First 100
 
@@ -183,12 +178,8 @@ foreach ($logName in $logNames) {
 # ════════════════════════════════════════════════════════════════════════
 Write-Host "[6/6] Checking npm packages..." -ForegroundColor Cyan
 
-# Look for openclaw in npm
 try {
     $npmGlobal = & npm list -g --depth=0 2>$null
-    if ($npmGlobal -match 'openclaw') {
-        Add-Finding "CRITICAL" "npm" "OpenClaw found in global npm packages!" "npm global" "openclaw is globally installed via npm - this may be the source of Meta Quest requests"
-    }
     if ($npmGlobal -match 'cline@') {
         # Check if it's a vulnerable version
         Add-Finding "HIGH" "npm" "cline npm package installed globally" "npm global" "cline detected - verify version is not from compromised supply chain attack"
@@ -214,8 +205,8 @@ foreach ($root in $searchRoots) {
             $allDeps = @()
             if ($pkg.dependencies)    { $allDeps += $pkg.dependencies.PSObject.Properties.Name }
             if ($pkg.devDependencies) { $allDeps += $pkg.devDependencies.PSObject.Properties.Name }
-            if ($allDeps -match 'openclaw|xmrig|cryptominer') {
-                Add-Finding "CRITICAL" "npm/dependency" "Suspicious dependency in $($pkg.name)" $_.FullName "Contains suspicious dependency: $($allDeps -match 'openclaw|xmrig|cryptominer')"
+            if ($allDeps -match 'xmrig|cryptominer') {
+                Add-Finding "CRITICAL" "npm/dependency" "Suspicious dependency in $($pkg.name)" $_.FullName "Contains suspicious dependency: $($allDeps -match 'xmrig|cryptominer')"
             }
         } catch {}
     }

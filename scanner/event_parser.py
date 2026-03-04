@@ -67,11 +67,6 @@ CRITICAL_EVENT_IDS = {
 
 # Suspicious keywords to look for in event messages
 SUSPICIOUS_MESSAGE_KEYWORDS = [
-    "openclaw",
-    "metaquest",
-    "oculus",
-    "ovrservice",
-    "airlink",
     "powershell -e",
     "powershell -enc",
     "encoded",
@@ -279,7 +274,7 @@ $results | ConvertTo-Json -Depth 2
                         "severity": (
                             "CRITICAL"
                             if suspicious
-                            and kw in ("openclaw", "metaquest", "mimikatz")
+                            and kw in ("mimikatz", "sekurlsa", "meterpreter", "beacon", "shellcode")
                             else info[1]
                         ),
                         "title": f"[ID:{ev_id}] {info[0]} - {ev.get('Provider','')}",

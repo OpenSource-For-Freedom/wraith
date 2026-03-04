@@ -116,8 +116,6 @@ def compute_anomaly_score(f: Dict[str, Any]) -> float:
     if entropy > 0:
         score += _clamp((entropy - 6.2) * 7.5, 0.0, 16.0)
 
-    if any(k in reason or k in title for k in ("openclaw", "metaquest", "oculus")):
-        score += 8.0
     if any(
         k in reason or k in title
         for k in ("inject", "shell", "beacon", "backdoor", "c2")
@@ -188,20 +186,6 @@ def scan_persistence(path: str) -> List[Dict]:
                     ]
                 ):
                     sev = "HIGH"
-                elif any(
-                    x in lower_val
-                    for x in [
-                        "openclaw",
-                        "metaquest",
-                        "oculus",
-                        "ovrservice",
-                        "airlink",
-                    ]
-                ):
-                    sev = "CRITICAL"
-                    reason = (
-                        f"SUSPICIOUS autorun (openclaw/Meta Quest related): {value}"
-                    )
                 findings.append(
                     {
                         "title": f"Autorun: {name}",
@@ -231,11 +215,6 @@ def scan_persistence(path: str) -> List[Dict]:
                 continue
             sev = "MEDIUM"
             lower = item.name.lower()
-            if any(
-                x in lower
-                for x in ["openclaw", "metaquest", "oculus", "airlink", "ovrservice"]
-            ):
-                sev = "CRITICAL"
             findings.append(
                 {
                     "title": f"Startup item: {item.name}",
@@ -317,20 +296,6 @@ Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled'} | ForEach-Object {
                     sev = "HIGH"
                     reason = f"Suspicious scheduled task command: {action[:200]}"
                 elif any(
-                    x in action + name.lower()
-                    for x in [
-                        "openclaw",
-                        "metaquest",
-                        "oculus",
-                        "ovrservice",
-                        "airlink",
-                    ]
-                ):
-                    sev = "CRITICAL"
-                    reason = (
-                        f"SUSPICIOUS task (openclaw/Meta Quest related): {action[:200]}"
-                    )
-                elif any(
                     x in action for x in ["powershell", "cmd", "wscript", "cscript"]
                 ):
                     sev = "LOW"
@@ -379,18 +344,6 @@ Get-CimInstance Win32_Service | Where-Object {$_.StartMode -in @('Auto','Manual'
                 sev = "INFO"
                 reason = ""
                 if any(
-                    x in pname + name.lower()
-                    for x in [
-                        "openclaw",
-                        "metaquest",
-                        "oculus",
-                        "ovrservice",
-                        "airlink",
-                    ]
-                ):
-                    sev = "HIGH"
-                    reason = f"Service related to openclaw/Meta Quest: {svc.get('PathName','')}"
-                elif any(
                     x in pname
                     for x in [
                         "\\temp\\",
