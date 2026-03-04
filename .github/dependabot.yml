@@ -17,7 +17,6 @@ updates:
     commit-message:
       prefix: "nuget"
 
-  # Python — scanner engine + all 14 modules
   - package-ecosystem: "pip"
     directory: "/scanner"
     schedule:
@@ -29,7 +28,6 @@ updates:
     commit-message:
       prefix: "pip"
 
-  # GitHub Actions — CI/CD workflow dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
