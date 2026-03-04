@@ -19,8 +19,8 @@ on:
     branches: [ main ]
 
 permissions:
-  contents:          write   # create releases, upload assets
-  security-events:   write   # upload SARIF to GitHub Security tab
+  contents:          write   
+  security-events:   write   
 
 jobs:
   build-and-release:
@@ -28,10 +28,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # ── 0. Harden runner (Step Security) ──────────────────────────────────
-      #   Monitors and restricts the runner's network/file-system access.
-      #   egress-policy: audit  →  logs unexpected outbound calls without blocking
-      #   (change to 'block' once allowed-endpoints list is stable)
       - name: Harden runner
         uses: step-security/harden-runner@v2
         with:
@@ -47,23 +43,16 @@ jobs:
             timestamp.digicert.com:443
             dl.dod.certificate.gov:443
 
-      # ── 1. Checkout ────────────────────────────────────────────────────────
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0        
 
-      # ── 2. .NET 8 SDK ──────────────────────────────────────────────────────
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      # ── 3. Derive version string (auto-increment patch) ────────────────────
-      #   VERSION file holds MAJOR.MINOR (e.g. "1.0").
-      #   This step finds the highest existing v{MAJOR}.{MINOR}.{PATCH} tag,
-      #   increments patch by 1, tags the commit, and pushes the tag.
-      #   To bump major or minor: edit the VERSION file and push to main.
       - name: Derive version
         id: ver
         shell: pwsh
@@ -93,7 +82,6 @@ jobs:
           Write-Host "Release version: $v"
 
 
-      # ── 4. Publish — self-contained single-file exe ────────────────────────
       - name: Publish WRAITH (self-contained, win-x64)
         shell: pwsh
         run: |
@@ -109,10 +97,7 @@ jobs:
           Write-Host "Published files:"
           Get-ChildItem ./publish | Select-Object Name, Length
 
-      # ── 5. Generate .NET SBOM (NuGet dependency tree) ─────────────────────
-      #   Produces SPDX-JSON + CycloneDX-JSON SBOMs for WRAITH.exe's managed
-      #   dependencies, attached to the release for supply-chain transparency.
-      - name: Generate .NET SBOM
+      - name: Generate .NET SBOM (SPDX)
         uses: anchore/sbom-action@v0
         with:
           path:              ./publish
@@ -130,7 +115,6 @@ jobs:
           format:            cyclonedx-json
           upload-artifact:   true
 
-      # ── 6. Sign WRAITH.exe (Authenticode) ─────────────────────────────────
       - name: Sign WRAITH.exe
         env:
           SIGNING_CERT_PFX:      ${{ secrets.SIGNING_CERT_PFX }}
@@ -169,7 +153,6 @@ jobs:
           $sig = Get-AuthenticodeSignature $exePath
           Write-Host "Signed OK  status=$($sig.Status)  signer='$($sig.SignerCertificate.Subject)'"
 
-      # ── 7. Stage the release bundle ────────────────────────────────────────
       - name: Stage release bundle
         shell: pwsh
         run: |
@@ -192,8 +175,6 @@ jobs:
           '{ "python": "", "scanner_dir": "" }' |
             Set-Content ./release/wraith.env.json -Encoding UTF8
 
-      # ── 8. Generate Python scanner SBOM ───────────────────────────────────
-      #   Captures the pip dependency surface of the scan engine.
       - name: Generate Python scanner SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -203,16 +184,6 @@ jobs:
           format:            spdx-json
           upload-artifact:   true
 
-      # ── 9. Write START.bat (click-to-run entry point) ─────────────────────
-      #
-      #   Users extract the zip and double-click START.bat.
-      #   It handles everything:
-      #     • Auto-installs Python if missing (winget → silent exe fallback)
-      #     • .venv create / reuse
-      #     • pip install scanner requirements
-      #     • writes wraith.env.json with the local venv path
-      #     • launches WRAITH.exe (self-contained — no .NET SDK needed)
-      # ──────────────────────────────────────────────────────────────────────
       - name: Write START.bat
         shell: pwsh
         run: |
@@ -321,7 +292,6 @@ jobs:
           $lines = $bat -split "`n" | ForEach-Object { $_ -replace '^\s{10}', '' }
           $lines -join "`r`n" | Set-Content ./release/START.bat -Encoding ASCII
 
-      # ── 10. Zip the bundle ─────────────────────────────────────────────────
       - name: Create ZIP
         shell: pwsh
         run: |
@@ -330,7 +300,6 @@ jobs:
           $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
           Write-Host "Created ${zip}  (${size} MB)"
 
-      # ── 11. Create / update GitHub Release ─────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -345,7 +314,7 @@ jobs:
             sbom-scanner.spdx.json
           generate_release_notes: true
           body: |
-            <p align="center"><img src="https://raw.githubusercontent.com/OpenSource-For-Freedom/wraith/main/WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/></p>
+            <p align="center"><img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/></p>
 
             ## WRAITH — Expecto Patronum · Windows Threat Hunter
 
