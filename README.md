@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="180"/>
+  <img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="580"/>
 </p>
 
 # W R A I T H
