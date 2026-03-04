@@ -4,6 +4,7 @@
 
 # W R A I T H
 **Windows Runtime Analysis & Intrusion Threat Hunter**  
+**With a Unix backbone and OpenSource data retrieval system**
 *"Expecto Patronum"*
 [![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
 
