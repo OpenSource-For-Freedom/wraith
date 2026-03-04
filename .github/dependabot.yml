@@ -1,0 +1,42 @@
+# Dependabot version updates for WRAITH
+# Ecosystems: NuGet (.NET 8 WPF), pip (Python scanner), GitHub Actions
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+
+  # .NET 8 / NuGet — WPF front-end
+  - package-ecosystem: "nuget"
+    directory: "/WRAITH"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "dotnet"
+    commit-message:
+      prefix: "nuget"
+
+  # Python — scanner engine + all 14 modules
+  - package-ecosystem: "pip"
+    directory: "/scanner"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "pip"
+
+  # GitHub Actions — CI/CD workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "actions"
