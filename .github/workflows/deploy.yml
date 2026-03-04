@@ -17,7 +17,6 @@ name: Deploy
 on:
   push:
     branches: [ main ]
-    tags:     [ 'v*' ]
 
 permissions:
   contents:          write   # create releases, upload assets
@@ -60,18 +59,36 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # ── 3. Derive version string ───────────────────────────────────────────
+      # ── 3. Derive version string (auto-increment patch) ────────────────────
+      #   VERSION file holds MAJOR.MINOR (e.g. "1.0").
+      #   This step finds the highest existing v{MAJOR}.{MINOR}.{PATCH} tag,
+      #   increments patch by 1, tags the commit, and pushes the tag.
+      #   To bump major or minor: edit the VERSION file and push to main.
       - name: Derive version
         id: ver
         shell: pwsh
         run: |
-          if ("${{ github.ref }}" -like "refs/tags/v*") {
-            $v = "${{ github.ref_name }}"
-          } else {
-            # dev build: embed run number so every push gets a unique asset name
-            $v = "v1.0.0-dev.${{ github.run_number }}"
+          $base = (Get-Content VERSION -Raw).Trim()   # e.g. "1.0"
+
+          git fetch --tags --quiet
+          $tags     = git tag -l "v${base}.*" 2>$null
+          $maxPatch = -1
+          foreach ($t in $tags) {
+            if ($t -match "^v(\d+\.\d+)\.(\d+)$" -and $Matches[1] -eq $base) {
+              $p = [int]$Matches[2]
+              if ($p -gt $maxPatch) { $maxPatch = $p }
+            }
           }
-          Write-Output "version=$v"   >> $env:GITHUB_OUTPUT
+          $patch = $maxPatch + 1
+          $v     = "v${base}.${patch}"
+
+          # Tag this commit and push so the release has a proper ref
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          git tag $v
+          git push origin $v
+
+          Write-Output "version=$v"                  >> $env:GITHUB_OUTPUT
           Write-Output "zip=WRAITH-${v}-win-x64.zip" >> $env:GITHUB_OUTPUT
           Write-Host "Release version: $v"
 
@@ -318,9 +335,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name:              ${{ steps.ver.outputs.version }}
-          name:                  WRAITH ${{ steps.ver.outputs.version }}
-          draft:                 ${{ !startsWith(github.ref, 'refs/tags/') }}
-          prerelease:            ${{ contains(steps.ver.outputs.version, 'dev') }}
+          name:                  WRAITH
+          draft:                 false
+          prerelease:            false
           files: |
             ${{ steps.ver.outputs.zip }}
             sbom-dotnet.spdx.json
