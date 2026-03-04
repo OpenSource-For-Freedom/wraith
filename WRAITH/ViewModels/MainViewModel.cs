@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -8,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Threading;
 using WRAITH.Models;
 using WRAITH.Services;
 
@@ -92,6 +94,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // ── Sort state ──────────────────────────────────────────────────────
     private string  _sortColumn    = "SEVERITY";
     private bool    _sortAscending = false;
+    // ── Incoming-finding / log queue (batched to avoid UI-thread flood) ────
+    private readonly ConcurrentQueue<ThreatFinding> _pendingFindings = new();
+    private readonly List<string> _pendingLogs = new();
+    private readonly object _logLock = new();
+    private readonly DispatcherTimer _flushTimer;
     // ── Observable collections ────────────────────────────────────────
     public ObservableCollection<ThreatFinding> AllFindings    { get; } = new();
     public ObservableCollection<ThreatFinding> FilteredFindings { get; } = new();
@@ -265,6 +272,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         });
         TraceOriginCommand = new AsyncRelayCommand<ThreatFinding>(
             f => TraceOriginAsync(f ?? _selectedFinding));
+
+        // Drain pending findings/logs on the UI thread every 150 ms
+        _flushTimer = new DispatcherTimer(DispatcherPriority.Background)
+            { Interval = TimeSpan.FromMilliseconds(150) };
+        _flushTimer.Tick += (_, _) => FlushPendingBatch();
+        _flushTimer.Start();
     }
 
     // ── Scan execution ────────────────────────────────────────────────
@@ -284,13 +297,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         _cts = new CancellationTokenSource();
         _orchestrator = new ScanOrchestrator();
-        _orchestrator.LogMessage += msg => App.Current.Dispatcher.Invoke(() => AppendLog(msg));
-        _orchestrator.FindingDiscovered += f => App.Current.Dispatcher.Invoke(() =>
-        {
-            AllFindings.Add(f);
-            ApplyFilter();
-            UpdateSummary();
-        });
+        // Enqueue — flushed in batches by _flushTimer (no per-finding Dispatcher.Invoke)
+        _orchestrator.LogMessage        += msg => { lock (_logLock) _pendingLogs.Add(msg); };
+        _orchestrator.FindingDiscovered += f   => _pendingFindings.Enqueue(f);
 
         var phases = new[]
         {
@@ -885,7 +894,89 @@ $result | ConvertTo-Json -Depth 8 -Compress
         ThreatLevel = "UNKNOWN";
         CurrentPhase = "Awaiting your command...";
         ScanProgress = 0;
-        UpdateSummary();
+        // Reset backing fields directly so notifications fire once each
+        _critCount = _highCount = _medCount = _lowCount = _infoCount = 0;
+        OnPropertyChanged(nameof(CritCount));
+        OnPropertyChanged(nameof(HighCount));
+        OnPropertyChanged(nameof(MedCount));
+        OnPropertyChanged(nameof(LowCount));
+        OnPropertyChanged(nameof(InfoCount));
+        OnPropertyChanged(nameof(TotalCount));
+    }
+
+    // ── Batch flush (called by _flushTimer on the UI thread) ──────────────
+    private void FlushPendingBatch()
+    {
+        // Flush log messages first
+        string[]? logs = null;
+        lock (_logLock)
+        {
+            if (_pendingLogs.Count > 0)
+            {
+                logs = _pendingLogs.ToArray();
+                _pendingLogs.Clear();
+            }
+        }
+        if (logs != null)
+            LogOutput += string.Join(string.Empty, logs.Select(m => m + "\n"));
+
+        // Flush findings — add directly, check filter incrementally
+        if (_pendingFindings.IsEmpty) return;
+        bool any = false;
+        while (_pendingFindings.TryDequeue(out var f))
+        {
+            AllFindings.Add(f);
+            if (PassesFilter(f)) FilteredFindings.Add(f);
+            // Increment backing fields only (no PropertyChanged per finding)
+            switch (f.Severity)
+            {
+                case Severity.Critical: _critCount++; break;
+                case Severity.High:     _highCount++; break;
+                case Severity.Medium:   _medCount++;  break;
+                case Severity.Low:      _lowCount++;  break;
+                default:                _infoCount++; break;
+            }
+            any = true;
+        }
+        if (any)
+        {
+            // Fire summary notifications once for the whole batch
+            OnPropertyChanged(nameof(CritCount));
+            OnPropertyChanged(nameof(HighCount));
+            OnPropertyChanged(nameof(MedCount));
+            OnPropertyChanged(nameof(LowCount));
+            OnPropertyChanged(nameof(InfoCount));
+            OnPropertyChanged(nameof(TotalCount));
+        }
+    }
+
+    /// <summary>Returns true if <paramref name="f"/> passes all active filters.</summary>
+    private bool PassesFilter(ThreatFinding f)
+    {
+        if (_severityFilter != "All" &&
+            !f.Severity.ToString().Equals(_severityFilter, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (_categoryFilter != "All" &&
+            !f.Category.Equals(_categoryFilter, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (_liveFilter != "All")
+        {
+            switch (_liveFilter)
+            {
+                case "Live" when f.ProcessStatus != "LIVE": return false;
+                case "Task" when f.ProcessStatus != "TASK": return false;
+                case "Dead" when !string.IsNullOrEmpty(f.ProcessStatus): return false;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var q = _searchText.ToLowerInvariant();
+            if (!f.Title.ToLowerInvariant().Contains(q) &&
+                !f.Path.ToLowerInvariant().Contains(q) &&
+                !f.Reason.ToLowerInvariant().Contains(q))
+                return false;
+        }
+        return true;
     }
 
     // ── Filtering ─────────────────────────────────────────────────────
