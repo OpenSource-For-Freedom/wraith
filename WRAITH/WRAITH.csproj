@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\wraith.png" />
+    <Resource Include="Assets\wraith.gif" />
     <None Include="Assets\wraith.ico" />
   </ItemGroup>
 

@@ -119,11 +119,22 @@
                    Stroke="#25A8C8E8"
                    RenderTransformOrigin="0.5,0.5"/>
 
-          <!-- Title block -->
-          <StackPanel Canvas.Left="40" Canvas.Top="28" IsHitTestVisible="False">
-            <TextBlock Text="W R A I T H" Style="{StaticResource TitleLabel}" FontSize="46"/>
-            <TextBlock Text="&quot;Expecto Patronum&quot;  ·  Windows Threat Hunting Engine"
-                       Style="{StaticResource SubtitleLabel}" Margin="4,2,0,0"/>
+          <!-- Title block with logo -->
+          <StackPanel Canvas.Left="28" Canvas.Top="22" Orientation="Horizontal"
+                      IsHitTestVisible="False" VerticalAlignment="Center">
+            <Image Source="Assets/wraith.png" Width="72" Height="72"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   VerticalAlignment="Center" Margin="0,0,14,0">
+              <Image.Effect>
+                <DropShadowEffect Color="#A8C8E8" BlurRadius="18"
+                                  ShadowDepth="0" Opacity="0.55"/>
+              </Image.Effect>
+            </Image>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Text="W R A I T H" Style="{StaticResource TitleLabel}" FontSize="46"/>
+              <TextBlock Text="&quot;Expecto Patronum&quot;  ·  Windows Threat Hunting Engine"
+                         Style="{StaticResource SubtitleLabel}" Margin="4,2,0,0"/>
+            </StackPanel>
           </StackPanel>
 
           <!-- Threat level badge — top right -->

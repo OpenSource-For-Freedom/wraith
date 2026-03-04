@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using WRAITH.Models;
@@ -23,8 +24,10 @@ public partial class MainWindow : Window
     // ── Header scan animation ───────────────────────────────────────────
     private readonly DispatcherTimer _headerDataTimer  = new();
     private readonly Random          _headerRng        = new();
-    private          Storyboard?     _headerBeamSb;
     private          int             _headerDataTick   = 0;
+    // ── GIF sprite frame cache (loaded once, shared across all passes) ──
+    private static BitmapFrame[]? _gifFrames;
+    private static int[]?         _gifDelayMs;
     // ── Win32 for window resize via custom chrome ───────────────────────
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
@@ -42,6 +45,11 @@ public partial class MainWindow : Window
                 vm.Shutdown();
             Environment.Exit(0);
         };
+
+        // DataContext was already set by XAML inside InitializeComponent before we
+        // subscribed to DataContextChanged, so wire up the existing ViewModel now.
+        if (DataContext is MainViewModel existingVm)
+            existingVm.PropertyChanged += VmPropertyChanged;
     }
 
     // ── Hook into ViewModel events ─────────────────────────────────────
@@ -144,7 +152,7 @@ public partial class MainWindow : Window
             var sb   = BuildRingStoryboard(ring, colours[i], delays[i], durations[i]);
             sb.RepeatBehavior = RepeatBehavior.Forever;
             _patronusBoards.Add(sb);
-            sb.Begin();
+            sb.Begin(this, true);
         }
 
         // Pulse spinner dot green
@@ -159,7 +167,7 @@ public partial class MainWindow : Window
 
     private void StopPatronusAnimation()
     {
-        foreach (var sb in _patronusBoards) sb.Stop();
+        foreach (var sb in _patronusBoards) sb.Stop(this);
         _patronusBoards.Clear();
         PatronusCanvas.SizeChanged -= RepositionRings;
 
@@ -425,7 +433,7 @@ public partial class MainWindow : Window
             WooshCanvas.Children.Clear();
             WooshCanvas.Visibility = Visibility.Collapsed;
         };
-        sb.Begin();
+        sb.Begin(this, false);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -463,6 +471,37 @@ public partial class MainWindow : Window
     private TimeSpan RandomGhostInterval()
         => TimeSpan.FromSeconds(_ghostRng.NextDouble() * 7.0 + 4.0);  // 4 – 11 s
 
+    private static void EnsureGifFrames()
+    {
+        if (_gifFrames != null) return;
+        try
+        {
+            var uri     = new Uri("pack://application:,,,/Assets/wraith.gif");
+            var decoder = BitmapDecoder.Create(
+                uri, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            _gifFrames  = [.. decoder.Frames];
+            _gifDelayMs = _gifFrames.Select(f =>
+            {
+                int delay = 80;
+                try
+                {
+                    if (f.Metadata is BitmapMetadata meta)
+                    {
+                        var raw = meta.GetQuery("/grctlext/Delay");
+                        if (raw is ushort cs) delay = Math.Max((int)cs * 10, 30);
+                    }
+                }
+                catch { /* use default */ }
+                return delay;
+            }).ToArray();
+        }
+        catch
+        {
+            _gifFrames  = [];
+            _gifDelayMs = [];
+        }
+    }
+
     private void SpawnWraithPass()
     {
         double W = Math.Max(ActualWidth,  1300);
@@ -480,7 +519,7 @@ public partial class MainWindow : Window
         double endX   = ltr ?  W  + 20    : -(bW + 20);
         double travel = endX - startX;
 
-        double entryY = _ghostRng.NextDouble() * (H * 0.88) - bH * 0.2;
+        double entryY = _ghostRng.NextDouble() * (H * 0.14);  // top 14% of window
 
         // Ghost colour palette
         Color[] palette =
@@ -500,154 +539,144 @@ public partial class MainWindow : Window
         Canvas.SetLeft(container, startX);
         Canvas.SetTop(container,  entryY);
 
-        // ── Build wraith silhouette (StreamGeometry) ──────────────────────
-        // All coords are normalized at scale=1.0, then scaled via helper
-        System.Windows.Point P(double x, double y) => new(x * scale, y * scale);
-
-        var geo = new StreamGeometry();
-        using (var ctx = geo.Open())
+        // ── Stringy ghost trails (drawn first so they sit behind the sprite) ───
+        // Thin elongated strands fading away behind the direction of travel
+        int trailCount = _ghostRng.Next(6, 14);
+        for (int i = 0; i < trailCount; i++)
         {
-            ctx.BeginFigure(P(55, 0), isFilled: true, isClosed: true);
-            // Hood — left Bezier curve
-            ctx.BezierTo(P(38, 4), P(20, 14), P(20, 32), isStroked: true, isSmoothJoin: true);
-            // Left shoulder
-            ctx.LineTo(P( 4, 54), isStroked: true, isSmoothJoin: false);
-            // Left body
-            ctx.LineTo(P(14, 92), isStroked: true, isSmoothJoin: false);
-            // Left tattered robe hem  (5 jags, alternating out/in)
-            ctx.LineTo(P( 1, 114), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(16,  98), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P( 4, 134), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(22, 114), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(12, 152), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(32, 130), isStroked: true, isSmoothJoin: false);
-            // Robe bottom centre
-            ctx.LineTo(P(55, 148), isStroked: true, isSmoothJoin: false);
-            // Right tattered robe hem (mirror)
-            ctx.LineTo(P(78, 130), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(98, 152), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(88, 114), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(106, 134), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P( 94,  98), isStroked: true, isSmoothJoin: false);
-            ctx.LineTo(P(109, 114), isStroked: true, isSmoothJoin: false);
-            // Right body
-            ctx.LineTo(P(96, 92), isStroked: true, isSmoothJoin: false);
-            // Right shoulder
-            ctx.LineTo(P(106, 54), isStroked: true, isSmoothJoin: false);
-            // Hood — right Bezier back to peak
-            ctx.BezierTo(P(90, 14), P(72, 4), P(55, 0), isStroked: true, isSmoothJoin: true);
-        }
-        geo.Freeze();
+            double tLen = (_ghostRng.NextDouble() * 80 + 30) * scale;
+            double tThk = (_ghostRng.NextDouble() * 3.5 + 0.8) * scale;
+            byte   ta   = (byte)(_ghostRng.NextDouble() * 110 + 40);
 
-        // Radial fill: bright head/chest → transparent tattered hem
-        var fill = new RadialGradientBrush
-        {
-            Center         = new System.Windows.Point(0.50, 0.18),
-            GradientOrigin = new System.Windows.Point(0.50, 0.14),
-            RadiusX        = 0.62,
-            RadiusY        = 0.58,
-        };
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(240, gc.R, gc.G, gc.B), 0.00));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(160, gc.R, gc.G, gc.B), 0.35));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb( 60, gc.R, gc.G, gc.B), 0.65));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+            // Spread strands vertically across the sprite height with slight wave offset
+            double ty = bH * 0.15 + _ghostRng.NextDouble() * bH * 0.78;
+            // Horizontal: behind the direction of travel
+            double tx = ltr ? -tLen - _ghostRng.NextDouble() * 12 * scale
+                             :  bW   + _ghostRng.NextDouble() * 12 * scale;
 
-        // RTL: mirror the silhouette horizontally around the hood centre
-        System.Windows.Media.Transform bodyTransform =
-            ltr ? Transform.Identity
-                : new ScaleTransform(-1, 1, 55 * scale, 0);
-
-        var body = new Path
-        {
-            Data            = geo,
-            Fill            = fill,
-            Stroke          = new SolidColorBrush(Color.FromArgb(50, gc.R, gc.G, gc.B)),
-            StrokeThickness = 0.7,
-            RenderTransform = bodyTransform,
-            Effect          = new DropShadowEffect
+            // Gradient fades from visible (near sprite) to transparent (tip of trail)
+            var trailBrush = new LinearGradientBrush
             {
-                Color       = gc,
-                BlurRadius  = 16 * scale,
-                ShadowDepth = 0,
-                Opacity     = 0.80,
-            }
-        };
-        container.Children.Add(body);
-
-        // ── Glowing eyes inside the hood ────────────────────────────────
-        // Hood interior eye positions (normalized): (36,22) and (74,22)
-        foreach (double eyeNX in new[] { 36.0, 74.0 })
-        {
-            // For RTL, mirror X around hood centre (55)
-            double ex = ltr ? eyeNX * scale : (110.0 - eyeNX) * scale;
-            double ey = 22.0 * scale;
-            double er =  3.0 * scale;
-
-            var eyeFill = new RadialGradientBrush();
-            eyeFill.GradientStops.Add(new GradientStop(Colors.White,                                          0.00));
-            eyeFill.GradientStops.Add(new GradientStop(Color.FromArgb(230, gc.R, gc.G, gc.B),                 0.45));
-            eyeFill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B),                 1.00));
-
-            var eye = new Ellipse
-            {
-                Width  = er * 2,
-                Height = er * 1.3,
-                Fill   = eyeFill,
-                Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 7 * scale, ShadowDepth = 0, Opacity = 0.95 }
+                StartPoint = ltr ? new System.Windows.Point(1, 0.5) : new System.Windows.Point(0, 0.5),
+                EndPoint   = ltr ? new System.Windows.Point(0, 0.5) : new System.Windows.Point(1, 0.5),
             };
-            Canvas.SetLeft(eye, ex - er);
-            Canvas.SetTop(eye,  ey - er * 0.65);
-            container.Children.Add(eye);
+            trailBrush.GradientStops.Add(new GradientStop(Color.FromArgb(ta,  gc.R, gc.G, gc.B), 0.0));
+            trailBrush.GradientStops.Add(new GradientStop(Color.FromArgb(0,   gc.R, gc.G, gc.B), 1.0));
 
-            // Each eye pulses at a slightly different rate
-            double pulseSpeed = _ghostRng.NextDouble() * 0.4 + 0.5;
-            eye.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0.55, 1.0, new Duration(TimeSpan.FromSeconds(pulseSpeed)))
+            var strand = new System.Windows.Shapes.Rectangle
+            {
+                Width   = tLen,
+                Height  = tThk,
+                Fill    = trailBrush,
+                RadiusX = tThk / 2,
+                RadiusY = tThk / 2,
+            };
+            Canvas.SetLeft(strand, tx);
+            Canvas.SetTop(strand,  ty - tThk / 2);
+            container.Children.Add(strand);
+
+            // Give each strand a slow undulating drift on Y so they ripple like smoke
+            double driftAmp  = (_ghostRng.NextDouble() * 6 + 3) * scale;
+            double driftSpeed = _ghostRng.NextDouble() * 1.2 + 0.6;
+            strand.BeginAnimation(Canvas.TopProperty,
+                new DoubleAnimation(ty - tThk / 2 - driftAmp, ty - tThk / 2 + driftAmp,
+                    new Duration(TimeSpan.FromSeconds(driftSpeed)))
                 {
                     AutoReverse    = true,
                     RepeatBehavior = RepeatBehavior.Forever,
-                    BeginTime      = TimeSpan.FromSeconds(_ghostRng.NextDouble() * 0.4),
-                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                    BeginTime      = TimeSpan.FromSeconds(_ghostRng.NextDouble() * driftSpeed),
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
                 });
         }
 
-        // ── Robe energy wisps (soft glows drifting from the lower tatters) ───
-        int wispCount = _ghostRng.Next(3, 7);
-        for (int i = 0; i < wispCount; i++)
-        {
-            double wr = (_ghostRng.NextDouble() * 10 + 5) * scale;
-            byte   wa = (byte)(_ghostRng.NextDouble() * 90 + 30);
-            var    wg = new RadialGradientBrush();
-            wg.GradientStops.Add(new GradientStop(Color.FromArgb(wa, gc.R, gc.G, gc.B), 0.0));
-            wg.GradientStops.Add(new GradientStop(Color.FromArgb( 0, gc.R, gc.G, gc.B), 1.0));
-            var wisp = new Ellipse { Width = wr * 2, Height = wr * 0.7, Fill = wg };
-            double wx = bW * 0.05 + _ghostRng.NextDouble() * bW * 0.90;
-            double wy = bH * 0.50 + _ghostRng.NextDouble() * bH * 0.48;
-            Canvas.SetLeft(wisp, wx - wr);
-            Canvas.SetTop(wisp,  wy - wr * 0.35);
-            container.Children.Add(wisp);
-        }
+        // ── GIF sprite body ────────────────────────────────────────────────
+        EnsureGifFrames();
+        DispatcherTimer? frameTimer = null;
 
-        // ── Dust motes trailing in the wake ───────────────────────────────
-        int dustCount = _ghostRng.Next(8, 18);
-        for (int i = 0; i < dustCount; i++)
+        if (_gifFrames?.Length > 0)
         {
-            double dr  = (_ghostRng.NextDouble() * 3.5 + 1.0) * scale;
-            byte   da  = (byte)(_ghostRng.NextDouble() * 90 + 20);
-            // Motes spread behind the direction of travel
-            double dx  = ltr
-                ? -(dr + _ghostRng.NextDouble() * bW * 0.85)
-                :  bW + _ghostRng.NextDouble() * bW * 0.85;
-            double dy  = bH * 0.25 + _ghostRng.NextDouble() * bH * 0.72;
-            var dust = new Ellipse
+            // Flip horizontally for RTL passes
+            System.Windows.Media.Transform imgXform = ltr
+                ? Transform.Identity
+                : new ScaleTransform(-1, 1, bW / 2, 0);
+
+            var img = new System.Windows.Controls.Image
             {
-                Width  = dr * (_ghostRng.NextDouble() * 2.2 + 0.8),
-                Height = dr * 0.38,
-                Fill   = new SolidColorBrush(Color.FromArgb(da, gc.R, gc.G, gc.B))
+                Width               = bW,
+                Height              = bH,
+                Source              = _gifFrames[0],
+                Stretch             = Stretch.Uniform,
+                RenderTransform     = imgXform,
+                Effect              = new DropShadowEffect
+                {
+                    Color       = gc,
+                    BlurRadius  = 18 * scale,
+                    ShadowDepth = 0,
+                    Opacity     = 0.85,
+                }
             };
-            Canvas.SetLeft(dust, dx);
-            Canvas.SetTop(dust,  dy);
-            container.Children.Add(dust);
+            Canvas.SetLeft(img, 0);
+            Canvas.SetTop(img,  0);
+            container.Children.Add(img);
+
+            // Cycle frames if the GIF has more than one
+            if (_gifFrames.Length > 1)
+            {
+                int frameIdx = 0;
+                frameTimer = new DispatcherTimer
+                    { Interval = TimeSpan.FromMilliseconds(_gifDelayMs![0]) };
+                frameTimer.Tick += (_, _) =>
+                {
+                    frameIdx = (frameIdx + 1) % _gifFrames.Length;
+                    img.Source = _gifFrames[frameIdx];
+                    frameTimer.Interval = TimeSpan.FromMilliseconds(_gifDelayMs[frameIdx]);
+                };
+                frameTimer.Start();
+            }
+        }
+        else
+        {
+            // Fallback vector silhouette if GIF failed to load
+            System.Windows.Point P(double x, double y) => new(x * scale, y * scale);
+            var geo = new StreamGeometry();
+            using (var ctx = geo.Open())
+            {
+                ctx.BeginFigure(P(55, 0), isFilled: true, isClosed: true);
+                ctx.BezierTo(P(38, 4), P(20, 14), P(20, 32), isStroked: true, isSmoothJoin: true);
+                ctx.LineTo(P( 4, 54), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(14, 92), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P( 1, 114), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(16, 98),  isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P( 4, 134), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(22, 114), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(12, 152), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(32, 130), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(55, 148), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(78, 130), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(98, 152), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(88, 114), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(106, 134), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P( 94,  98), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(109, 114), isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(96, 92),  isStroked: true, isSmoothJoin: false);
+                ctx.LineTo(P(106, 54), isStroked: true, isSmoothJoin: false);
+                ctx.BezierTo(P(90, 14), P(72, 4), P(55, 0), isStroked: true, isSmoothJoin: true);
+            }
+            geo.Freeze();
+            var fill = new RadialGradientBrush
+            {
+                Center = new System.Windows.Point(0.50, 0.18), GradientOrigin = new System.Windows.Point(0.50, 0.14),
+                RadiusX = 0.62, RadiusY = 0.58,
+            };
+            fill.GradientStops.Add(new GradientStop(Color.FromArgb(240, gc.R, gc.G, gc.B), 0.00));
+            fill.GradientStops.Add(new GradientStop(Color.FromArgb(160, gc.R, gc.G, gc.B), 0.35));
+            fill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+            container.Children.Add(new Path
+            {
+                Data = geo, Fill = fill,
+                RenderTransform = ltr ? Transform.Identity : new ScaleTransform(-1, 1, 55 * scale, 0),
+                Effect = new DropShadowEffect { Color = gc, BlurRadius = 16 * scale, ShadowDepth = 0, Opacity = 0.80 }
+            });
         }
 
         GhostCanvas.Children.Add(container);
@@ -675,8 +704,8 @@ public partial class MainWindow : Window
         Storyboard.SetTarget(xAnim, container);
         Storyboard.SetTargetProperty(xAnim, new PropertyPath(Canvas.LeftProperty));
 
-        // ── Y movement: visible swooping dips and rises as the wraith hunts ──
-        double amp   = _ghostRng.NextDouble() * 140 + 100;  // 100–240 px vertical swing
+        // ── Y movement: gentle swoops — wraith stays in the top band ──
+        double amp   = _ghostRng.NextDouble() * 40 + 25;   // 25–65 px swing, stays near top
         double exitY = entryY + (_ghostRng.NextDouble() - 0.5) * amp * 0.6;
         double[] yPts =
         [
@@ -711,6 +740,7 @@ public partial class MainWindow : Window
         // ── Fire directly on the element — reliable for dynamically created objects ──
         opAnim.Completed += (_, _) =>
         {
+            frameTimer?.Stop();
             GhostCanvas.Children.Remove(container);
             _ghostActive = Math.Max(0, _ghostActive - 1);
         };
@@ -772,10 +802,11 @@ public partial class MainWindow : Window
         double h = Math.Max(PatronusCanvas.ActualHeight, 160);
         ScanBeam.Height = h;
 
-        // Repeating sweep: beam moves left → right in 2.4 s, opacity key-framed per sweep
+        // Sweep beam left → right, repeating forever — direct BeginAnimation (no Storyboard)
         var beamMove = new DoubleAnimation(-10, w + 10,
             new Duration(TimeSpan.FromSeconds(2.4)))
         { RepeatBehavior = RepeatBehavior.Forever };
+        ScanBeam.BeginAnimation(Canvas.LeftProperty, beamMove);
 
         var opKf = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
         opKf.Duration = new Duration(TimeSpan.FromSeconds(2.4));
@@ -783,17 +814,7 @@ public partial class MainWindow : Window
         opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0.90, KeyTime.FromPercent(0.05)));
         opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0.90, KeyTime.FromPercent(0.90)));
         opKf.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromPercent(1.00)));
-
-        var sbBeam = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
-        sbBeam.Duration = new Duration(TimeSpan.FromSeconds(2.4));
-        Storyboard.SetTarget(beamMove, ScanBeam);
-        Storyboard.SetTargetProperty(beamMove, new PropertyPath(Canvas.LeftProperty));
-        Storyboard.SetTarget(opKf, ScanBeam);
-        Storyboard.SetTargetProperty(opKf, new PropertyPath(OpacityProperty));
-        sbBeam.Children.Add(beamMove);
-        sbBeam.Children.Add(opKf);
-        _headerBeamSb = sbBeam;
-        sbBeam.Begin();
+        ScanBeam.BeginAnimation(OpacityProperty, opKf);
 
         _headerDataTick = 0;
         _headerDataTimer.Interval = TimeSpan.FromMilliseconds(280);
@@ -808,22 +829,24 @@ public partial class MainWindow : Window
     {
         _headerDataTimer.Stop();
         _headerDataTimer.Tick -= HeaderDataTimer_Tick;
-        _headerBeamSb?.Stop();
-        _headerBeamSb = null;
+
+        // Cancel beam animations by passing null (restores local/default values)
+        ScanBeam.BeginAnimation(Canvas.LeftProperty, null);
+        ScanBeam.BeginAnimation(OpacityProperty, null);
 
         var fadeOut = new DoubleAnimation(1, 0, new Duration(TimeSpan.FromSeconds(0.45)));
         fadeOut.Completed += (_, _) =>
         {
             HeaderScanOverlay.Visibility = Visibility.Collapsed;
-            // Remove any dynamically-added fragments/wraithlets but keep named XAML elements
+            // Remove dynamically-added fragments/wraithlets but keep named XAML elements
             var toRemove = HeaderScanOverlay.Children
                 .OfType<UIElement>()
                 .Where(c => c != ScanBeam && c != HeaderPhaseLabel && c != HeaderProgressBar)
                 .ToList();
             foreach (var el in toRemove) HeaderScanOverlay.Children.Remove(el);
-            ScanBeam.Opacity        = 0;
-            HeaderPhaseLabel.Opacity = 0;
-            HeaderProgressBar.Width  = 0;
+            ScanBeam.Opacity         = 0;
+            HeaderPhaseLabel.Opacity  = 0;
+            HeaderProgressBar.Width   = 0;
         };
         HeaderScanOverlay.BeginAnimation(OpacityProperty, fadeOut);
     }
@@ -876,28 +899,25 @@ public partial class MainWindow : Window
         double dur   = _headerRng.NextDouble() * 1.6 + 0.9;
         double delay = _headerRng.NextDouble() * 0.25;
 
-        var sb = new Storyboard();
         var fadeIn  = new DoubleAnimation(0, 0.85, new Duration(TimeSpan.FromSeconds(0.18)))
                       { BeginTime = TimeSpan.FromSeconds(delay) };
         var move    = new DoubleAnimation(hW + 10, -130, new Duration(TimeSpan.FromSeconds(dur)))
                       { BeginTime = TimeSpan.FromSeconds(delay),
                         EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } };
-        var fadeOut = new DoubleAnimation(0.85, 0, new Duration(TimeSpan.FromSeconds(0.25)))
+        var fadeOut2 = new DoubleAnimation(0.85, 0, new Duration(TimeSpan.FromSeconds(0.25)))
                       { BeginTime = TimeSpan.FromSeconds(delay + dur * 0.72) };
-        foreach (var (anim, prop) in new (Timeline, PropertyPath)[]
-        {
-            (fadeIn,  new PropertyPath(OpacityProperty)),
-            (move,    new PropertyPath(Canvas.LeftProperty)),
-            (fadeOut, new PropertyPath(OpacityProperty))
-        })
-        {
-            Storyboard.SetTarget(anim, frag);
-            Storyboard.SetTargetProperty(anim, prop);
-            sb.Children.Add(anim);
-        }
-        sb.Duration   = new Duration(TimeSpan.FromSeconds(delay + dur + 0.05));
-        sb.Completed += (_, _) => { try { HeaderScanOverlay.Children.Remove(frag); } catch { } };
-        sb.Begin();
+
+        // Sequence opacity: fade in, hold, then fade out
+        var opSeq = new DoubleAnimationUsingKeyFrames();
+        opSeq.Duration = new Duration(TimeSpan.FromSeconds(delay + dur + 0.05));
+        opSeq.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromTimeSpan(TimeSpan.FromSeconds(delay))));
+        opSeq.KeyFrames.Add(new LinearDoubleKeyFrame(0.85, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(delay + 0.18))));
+        opSeq.KeyFrames.Add(new LinearDoubleKeyFrame(0.85, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(delay + dur * 0.72))));
+        opSeq.KeyFrames.Add(new LinearDoubleKeyFrame(0,    KeyTime.FromTimeSpan(TimeSpan.FromSeconds(delay + dur))));
+        opSeq.Completed += (_, _) => { try { HeaderScanOverlay.Children.Remove(frag); } catch { } };
+
+        frag.BeginAnimation(Canvas.LeftProperty, move);
+        frag.BeginAnimation(OpacityProperty,     opSeq);
     }
 
     private void SpawnHeaderWraithlet()
