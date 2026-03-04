@@ -1,19 +1,37 @@
-<p align="center">
-  <img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/>
-</p>
+<div align="center">
 
-# W R A I T H
-**Windows Runtime Analysis & Intrusion Threat Hunter**  
-**With a Unix backbone and OpenSource data retrieval system**
-*"Expecto Patronum"*
+<img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/>
+
+<pre align="center">
+     ##### /    ##   ###            ##### /##             ##                   #####  #      /###           /         #####    ##
+  ######  /  #####    ###        ######  / ##          /####                ######  /       /  ############/       ######  /   #### /
+ /#   /  /     #####   ###      /#   /  /  ##         /  ###               /#   /  /       /     #########        /#   /  /    ####/
+/    /  ##     # ##      ##    /    /  /   ##            /##              /    /  /        #     /  #            /    /  /     # #
+    /  ###     #         ##        /  /    /            /  ##                 /  /          ##  /  ##                /  /      #
+   ##   ##     #         ##       ## ##   /             /  ##                ## ##             /  ###               ## ##      #
+   ##   ##     #         ##       ## ##  /             /    ##               ## ##            ##   ##               ## ##      #
+   ##   ##     #         ##       ## ###/              /    ##             /### ##            ##   ##               ## ########
+   ##   ##     #         ##       ## ##  ###          /      ##           / ### ##            ##   ##               ## ##      #
+   ##   ##     #         ##       ## ##    ##         /########              ## ##            ##   ##               ## ##      ##
+    ##  ##     #         ##       #  ##    ##        /        ##        ##   ## ##             ##  ##               #  ##      ##
+     ## #      #         /           /     ##        #        ##       ###   #  /               ## #      /            /        ##
+      ###      /##      /        /##/      ###      /####      ##       ###    /                 ###     /         /##/         ##
+       #######/ #######/        /  ####    ##      /   ####    ## /      #####/                   ######/         /  #####       ##
+         ####     ####         /    ##     #      /     ##      #/         ###                      ###          /     ##
+</pre>
+
+**Windows Runtime Analysis & Intrusion Threat Hunter**
+**With a** ![Unix](https://img.shields.io/badge/Unix-backbone-2ea44f) **and OpenSource data retrieval system** · *Expecto Patronum*
 
 [![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows)](docs/windows10.md)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://python.org/downloads/)
-[![License](https://img.shields.io/github/license/OpenSource-For-Freedom/wraith)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
+
+</div>
 
 ---
 
