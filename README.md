@@ -5,12 +5,27 @@
 # W R A I T H
 **Windows Runtime Analysis & Intrusion Threat Hunter**  
 *"Expecto Patronum"*
+[![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
 
 A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
+
 
 ---
 
 ## UI Walkthrough
+
+<p align="center">
+  <img src="WRAITH/Assets/wraith.gif" alt="WRAITH scan animation" width="800"/>
+</p>
+
+### Live scan in action
+<p align="center">
+  <img src="WRAITH/Assets/wraith_readme_900.webp" alt="WRAITH live scan" width="800"/>
+</p>
+
+Findings surface in real time as each of the 14 modules runs — YARA matches, heuristic hits, persistence entries, and process anomalies all stream into the same feed ranked by severity.
+
+---
 
 ### Dashboard — live threat feed
 <p align="center">
@@ -36,6 +51,15 @@ Filter the feed by severity (CRITICAL → INFO) in real time without re-running 
 </p>
 
 After the scan completes the summary bar shows total counts per severity tier. Export to **JSON**, **CSV**, or a self-contained **HTML** report from the toolbar at any time.
+
+---
+
+### Killing a live process
+<p align="center">
+  <img src="WRAITH/Assets/kil.png" alt="WRAITH kill process dialog" width="800"/>
+</p>
+
+Select any finding tied to a running process, then hit **Kill Process** in the toolbar. WRAITH confirms the target PID and name before terminating — no silent kills. The row updates immediately to reflect the process is gone.
 
 ---
 
