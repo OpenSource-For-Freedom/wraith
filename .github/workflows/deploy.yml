@@ -1,0 +1,366 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# WRAITH — Build & Release
+#
+# Trigger : every push to main  →  draft pre-release  (dev build)
+#           push of v* tag       →  published release   (stable)
+#
+# Artifact: WRAITH-<version>-win-x64.zip
+#   ├── WRAITH.exe        (self-contained, .NET runtime bundled — no SDK needed)
+#   ├── START.bat         (click-to-run: Python venv → deps → launch)
+#   ├── scanner/          (Python scan engine + YARA rules)
+#   ├── quick-scan.ps1    (headless scan, no build required)
+#   ├── README.md
+#   └── LICENSE
+# ═══════════════════════════════════════════════════════════════════════════════
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+    tags:     [ 'v*' ]
+
+permissions:
+  contents:          write   # create releases, upload assets
+  id-token:          write   # SLSA provenance & SBOM attestation signing
+  attestations:      write   # artifact attestation API
+  security-events:   write   # upload SARIF to GitHub Security tab
+
+jobs:
+  build-and-release:
+    name: Build & Release (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      # ── 0. Harden runner (Step Security) ──────────────────────────────────
+      #   Monitors and restricts the runner's network/file-system access.
+      #   egress-policy: audit  →  logs unexpected outbound calls without blocking
+      #   (change to 'block' once allowed-endpoints list is stable)
+      - name: Harden runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            nuget.org:443
+            api.nuget.org:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            timestamp.digicert.com:443
+            dl.dod.certificate.gov:443
+
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        
+
+      # ── 2. .NET 8 SDK ──────────────────────────────────────────────────────
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # ── 3. Derive version string ───────────────────────────────────────────
+      - name: Derive version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -like "refs/tags/v*") {
+            $v = "${{ github.ref_name }}"
+          } else {
+            # dev build: embed run number so every push gets a unique asset name
+            $v = "v1.0.0-dev.${{ github.run_number }}"
+          }
+          Write-Output "version=$v"   >> $env:GITHUB_OUTPUT
+          Write-Output "zip=WRAITH-${v}-win-x64.zip" >> $env:GITHUB_OUTPUT
+          Write-Host "Release version: $v"
+
+
+      # ── 4. Publish — self-contained single-file exe ────────────────────────
+      - name: Publish WRAITH (self-contained, win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish WRAITH/WRAITH.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output ./publish
+          Write-Host "Published files:"
+          Get-ChildItem ./publish | Select-Object Name, Length
+
+      # ── 5. Generate .NET SBOM (NuGet dependency tree) ─────────────────────
+      #   Produces SPDX-JSON + CycloneDX-JSON SBOMs for WRAITH.exe's managed
+      #   dependencies, attached to the release for supply-chain transparency.
+      - name: Generate .NET SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path:              ./publish
+          artifact-name:     sbom-dotnet-${{ steps.ver.outputs.version }}.spdx.json
+          output-file:       ./sbom-dotnet.spdx.json
+          format:            spdx-json
+          upload-artifact:   true
+
+      - name: Generate .NET SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path:              ./publish
+          artifact-name:     sbom-dotnet-${{ steps.ver.outputs.version }}.cyclonedx.json
+          output-file:       ./sbom-dotnet.cyclonedx.json
+          format:            cyclonedx-json
+          upload-artifact:   true
+
+      # ── 6. Sign WRAITH.exe (Authenticode) ─────────────────────────────────
+      - name: Sign WRAITH.exe
+        env:
+          SIGNING_CERT_PFX:      ${{ secrets.SIGNING_CERT_PFX }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:SIGNING_CERT_PFX) {
+            Write-Warning "SIGNING_CERT_PFX secret not configured — WRAITH.exe will NOT be Authenticode-signed."
+            Write-Warning "To enable: add SIGNING_CERT_PFX (base64 PFX) and SIGNING_CERT_PASSWORD to repo secrets."
+            exit 0
+          }
+
+          # Decode PFX → temp file → import → sign → remove temp file
+          $pfxPath = Join-Path $env:TEMP "wraith-sign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_CERT_PFX))
+
+          $secPwd = ConvertTo-SecureString $env:SIGNING_CERT_PASSWORD -AsPlainText -Force
+          $cert   = Import-PfxCertificate -FilePath $pfxPath `
+                      -CertStoreLocation Cert:\CurrentUser\My `
+                      -Password $secPwd
+          Remove-Item $pfxPath -Force          # never leave the PFX on disk
+
+          $exePath = "./publish/WRAITH.exe"
+          $result  = Set-AuthenticodeSignature `
+                       -FilePath        $exePath `
+                       -Certificate     $cert `
+                       -TimestampServer "http://timestamp.digicert.com" `
+                       -HashAlgorithm   SHA256
+
+          if ($result.Status -notin @("Valid", "UnknownError")) {
+            Write-Error "Signing failed: $($result.StatusMessage)"
+            exit 1
+          }
+
+          # Verify embedded signature is readable
+          $sig = Get-AuthenticodeSignature $exePath
+          Write-Host "Signed OK  status=$($sig.Status)  signer='$($sig.SignerCertificate.Subject)'"
+
+      # ── 7. Stage the release bundle ────────────────────────────────────────
+      - name: Stage release bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ./release -Force | Out-Null
+
+          # Core exe
+          Copy-Item ./publish/WRAITH.exe ./release/WRAITH.exe
+
+          # Python scan engine + bundled YARA rules
+          Copy-Item -Recurse ./scanner ./release/scanner
+
+          # Headless quick-scan (no build needed, pure PowerShell)
+          Copy-Item ./quick-scan.ps1 ./release/quick-scan.ps1
+
+          # Docs
+          Copy-Item ./README.md ./release/README.md
+          Copy-Item ./LICENSE   ./release/LICENSE
+
+          # Blank env template so the app never picks up a stale machine path
+          '{ "python": "", "scanner_dir": "" }' |
+            Set-Content ./release/wraith.env.json -Encoding UTF8
+
+      # ── 8. Generate Python scanner SBOM ───────────────────────────────────
+      #   Captures the pip dependency surface of the scan engine.
+      - name: Generate Python scanner SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path:              ./scanner
+          artifact-name:     sbom-scanner-${{ steps.ver.outputs.version }}.spdx.json
+          output-file:       ./sbom-scanner.spdx.json
+          format:            spdx-json
+          upload-artifact:   true
+
+      # ── 9. Write START.bat (click-to-run entry point) ─────────────────────
+      #
+      #   Users extract the zip and double-click START.bat.
+      #   It handles everything:
+      #     • Auto-installs Python if missing (winget → silent exe fallback)
+      #     • .venv create / reuse
+      #     • pip install scanner requirements
+      #     • writes wraith.env.json with the local venv path
+      #     • launches WRAITH.exe (self-contained — no .NET SDK needed)
+      # ──────────────────────────────────────────────────────────────────────
+      - name: Write START.bat
+        shell: pwsh
+        run: |
+          $bat = @'
+          @echo off
+          setlocal enabledelayedexpansion
+
+          echo.
+          echo  ==========================================
+          echo   W R A I T H  --  Expecto Patronum
+          echo  ==========================================
+          echo.
+
+          set ROOT=%~dp0
+          set VENV_DIR=%ROOT%.venv
+          set VENV_PYTHON=%VENV_DIR%\Scripts\python.exe
+          set VENV_PIP=%VENV_DIR%\Scripts\pip.exe
+          set REQ=%ROOT%scanner\requirements.txt
+          set EXE=%ROOT%WRAITH.exe
+
+          :: ── Step 1: Verify / auto-install Python ──────────────────────────
+          echo [1/3] Checking Python...
+          where python >nul 2>&1
+          if %ERRORLEVEL% NEQ 0 (
+              echo  Python not found. Installing automatically...
+              echo.
+
+              :: Try winget first (built into Windows 10 1709+ / Windows 11)
+              where winget >nul 2>&1
+              if %ERRORLEVEL% EQU 0 (
+                  echo  Using winget to install Python 3.11...
+                  winget install --id Python.Python.3.11 --source winget ^^
+                    --silent --accept-package-agreements --accept-source-agreements
+              ) else (
+                  echo  winget not available. Downloading Python 3.11 installer...
+                  powershell -NoProfile -Command ^^
+                    "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-setup.exe'; Write-Host '  Download complete.'"
+                  echo  Running silent installer (this may take a minute)...
+                  "%TEMP%\python-setup.exe" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
+                  del /f /q "%TEMP%\python-setup.exe" >nul 2>&1
+              )
+
+              :: Reload user PATH so python is visible without reopening the shell
+              for /f "tokens=*" %%P in ('powershell -NoProfile -Command ^^
+                "[Environment]::GetEnvironmentVariable('PATH','User')"') do set "PATH=%%P;%PATH%"
+
+              where python >nul 2>&1
+              if %ERRORLEVEL% NEQ 0 (
+                  echo.
+                  echo  Python was installed but is not on PATH yet.
+                  echo  Please close this window and run START.bat again.
+                  pause
+                  exit /b 1
+              )
+              echo  Python installed successfully.
+          )
+          python --version
+          echo  Python OK.
+
+          :: ── Step 2: Python venv + dependencies ────────────────────────────
+          echo.
+          echo [2/3] Setting up Python environment...
+          if not exist "%VENV_PYTHON%" (
+              echo  Creating virtual environment...
+              python -m venv "%VENV_DIR%"
+              if %ERRORLEVEL% NEQ 0 (
+                  echo  ERROR: Failed to create venv.
+                  pause
+                  exit /b 1
+              )
+          ) else (
+              echo  Reusing existing venv.
+          )
+
+          echo  Installing scan dependencies (first run may take a minute)...
+          "%VENV_PYTHON%" -m pip install --upgrade pip --quiet --disable-pip-version-check
+          "%VENV_PIP%" install -r "%REQ%" --quiet --disable-pip-version-check
+          if %ERRORLEVEL% NEQ 0 (
+              echo  WARNING: Some packages failed. YARA scanning may be unavailable.
+              echo  All other modules will still run.
+          ) else (
+              echo  Dependencies OK.
+          )
+
+          :: Write env config so WRAITH.exe finds the correct python
+          powershell -NoProfile -Command ^
+            "@{ python = '%VENV_PYTHON:\=\\%'; scanner_dir = '%ROOT:\=\\%scanner' } | ConvertTo-Json | Set-Content '%ROOT:\=\\%wraith.env.json' -Encoding UTF8"
+
+          :: ── Step 3: Launch ─────────────────────────────────────────────────
+          echo.
+          echo [3/3] Launching WRAITH...
+          if not exist "%EXE%" (
+              echo  ERROR: WRAITH.exe not found at %EXE%
+              pause
+              exit /b 1
+          )
+
+          taskkill /F /T /IM WRAITH.exe >nul 2>&1
+
+          start "" "%EXE%"
+          echo  WRAITH launched.
+          timeout /t 2 >nul
+          '@
+
+          # Trim the leading spaces that the heredoc indentation adds
+          $lines = $bat -split "`n" | ForEach-Object { $_ -replace '^\s{10}', '' }
+          $lines -join "`r`n" | Set-Content ./release/START.bat -Encoding ASCII
+
+      # ── 10. Zip the bundle ─────────────────────────────────────────────────
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.ver.outputs.zip }}"
+          Compress-Archive -Path ./release/* -DestinationPath $zip -CompressionLevel Optimal
+          $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          Write-Host "Created ${zip}  (${size} MB)"
+
+      # ── 11. SLSA build provenance attestation ──────────────────────────────
+      #   Cryptographically links this ZIP to the exact commit + workflow run
+      #   that produced it. Verifiable with: gh attestation verify <zip>
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.ver.outputs.zip }}
+
+      # ── 12. Create / update GitHub Release ────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:              ${{ steps.ver.outputs.version }}
+          name:                  WRAITH ${{ steps.ver.outputs.version }}
+          draft:                 ${{ !startsWith(github.ref, 'refs/tags/') }}
+          prerelease:            ${{ contains(steps.ver.outputs.version, 'dev') }}
+          files: |
+            ${{ steps.ver.outputs.zip }}
+            sbom-dotnet.spdx.json
+            sbom-dotnet.cyclonedx.json
+            sbom-scanner.spdx.json
+          generate_release_notes: true
+          body: |
+            ## WRAITH — Expecto Patronum · Windows Threat Hunter
+
+            ### Install
+            1. Download **`${{ steps.ver.outputs.zip }}`** below
+            2. Extract anywhere (e.g. `C:\Tools\WRAITH\`)
+            3. Double-click **`START.bat`**
+
+            `START.bat` will:
+            - **Auto-install Python 3.11** if not present (via winget, or silent installer download)
+            - Create a local `.venv` and install all scan dependencies
+            - Launch **WRAITH.exe** — no .NET SDK required (runtime is bundled)
+
+            > **Requires Administrator** — UAC prompt will appear on first launch.
+
+            ### Requirements
+            | | |
+            |---|---|
+            | OS | Windows 10 / 11 x64 |
+            | Python | Auto-installed by START.bat if missing |
+            | .NET runtime | **Not needed** — bundled inside WRAITH.exe |
+
+            ### Headless scan (no GUI)
+            ```powershell
+            .\quick-scan.ps1
+            .\quick-scan.ps1 -Hours 168 -OutPath C:\report.json
+            ```

@@ -1,0 +1,378 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════
+       WRAITH · Expecto Patronum Colour Palette
+       ═══════════════════════════════════════════════ -->
+  <Color x:Key="ColDeepVoid">#08081A</Color>
+  <Color x:Key="ColAbyss">#0B0B20</Color>
+  <Color x:Key="ColDarkMagic">#0F0F2E</Color>
+  <Color x:Key="ColPurpleShadow">#1A0D3D</Color>
+  <Color x:Key="ColSpellArc">#2E1A5E</Color>
+  <Color x:Key="ColPatronusSilver">#C8D8E8</Color>
+  <Color x:Key="ColPatronusGlow">#A8C8E8</Color>
+  <Color x:Key="ColPatronusCore">#E8F4FF</Color>
+  <Color x:Key="ColGryffindorGold">#D4AF37</Color>
+  <Color x:Key="ColGoldDim">#8B7420</Color>
+  <Color x:Key="ColCritical">#FF2D55</Color>
+  <Color x:Key="ColHigh">#FF6B35</Color>
+  <Color x:Key="ColMedium">#FFD700</Color>
+  <Color x:Key="ColLow">#4FC3F7</Color>
+  <Color x:Key="ColInfo">#9E9E9E</Color>
+  <Color x:Key="ColRowAlt">#0D0D25</Color>
+  <Color x:Key="ColRowNormal">#0A0A1E</Color>
+  <Color x:Key="ColPanelBorder">#2A1A5A</Color>
+
+  <!-- Brushes -->
+  <SolidColorBrush x:Key="BrDeepVoid"         Color="{StaticResource ColDeepVoid}"/>
+  <SolidColorBrush x:Key="BrAbyss"            Color="{StaticResource ColAbyss}"/>
+  <SolidColorBrush x:Key="BrDarkMagic"        Color="{StaticResource ColDarkMagic}"/>
+  <SolidColorBrush x:Key="BrPurpleShadow"     Color="{StaticResource ColPurpleShadow}"/>
+  <SolidColorBrush x:Key="BrPatronusSilver"   Color="{StaticResource ColPatronusSilver}"/>
+  <SolidColorBrush x:Key="BrPatronusGlow"     Color="{StaticResource ColPatronusGlow}"/>
+  <SolidColorBrush x:Key="BrPatronusCore"     Color="{StaticResource ColPatronusCore}"/>
+  <SolidColorBrush x:Key="BrGryffindorGold"   Color="{StaticResource ColGryffindorGold}"/>
+  <SolidColorBrush x:Key="BrGoldDim"          Color="{StaticResource ColGoldDim}"/>
+  <SolidColorBrush x:Key="BrCritical"         Color="{StaticResource ColCritical}"/>
+  <SolidColorBrush x:Key="BrHigh"             Color="{StaticResource ColHigh}"/>
+  <SolidColorBrush x:Key="BrMedium"           Color="{StaticResource ColMedium}"/>
+  <SolidColorBrush x:Key="BrLow"              Color="{StaticResource ColLow}"/>
+  <SolidColorBrush x:Key="BrInfo"             Color="{StaticResource ColInfo}"/>
+  <SolidColorBrush x:Key="BrPanelBorder"      Color="{StaticResource ColPanelBorder}"/>
+  <SolidColorBrush x:Key="BrTransparent"      Color="Transparent"/>
+
+  <!-- Popup/list system brushes for dark dropdown readability -->
+  <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#0D0D28"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#0D0D28"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2E1A5E"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#E8F4FF"/>
+
+  <LinearGradientBrush x:Key="BrWindowBackground" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="{StaticResource ColDeepVoid}"    Offset="0.0"/>
+    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="0.5"/>
+    <GradientStop Color="{StaticResource ColDeepVoid}"    Offset="1.0"/>
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="BrHeaderBackground" StartPoint="0,0" EndPoint="1,0">
+    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="0.0"/>
+    <GradientStop Color="{StaticResource ColSpellArc}"     Offset="0.5"/>
+    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="1.0"/>
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="BrScanButton" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#3D1C7A" Offset="0"/>
+    <GradientStop Color="#1E0A40" Offset="1"/>
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="BrScanButtonHover" StartPoint="0,0" EndPoint="0,1">
+    <GradientStop Color="#5A2EA8" Offset="0"/>
+    <GradientStop Color="#2E1060" Offset="1"/>
+  </LinearGradientBrush>
+
+  <!-- ═══════════════════════════════════════════════
+       Typography
+       ═══════════════════════════════════════════════ -->
+  <FontFamily x:Key="FntWraith">Segoe UI</FontFamily>
+
+  <!-- ═══════════════════════════════════════════════
+       Window chrome / base style
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="WraithWindow" TargetType="Window">
+    <Setter Property="Background"   Value="{StaticResource BrWindowBackground}"/>
+    <Setter Property="Foreground"   Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="FontFamily"   Value="{StaticResource FntWraith}"/>
+    <Setter Property="FontSize"     Value="13"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Panel / Border
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="SpellPanel" TargetType="Border">
+    <Setter Property="Background"      Value="#10102A"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius"    Value="6"/>
+    <Setter Property="Padding"         Value="12"/>
+    <Setter Property="Effect">
+      <Setter.Value>
+        <DropShadowEffect Color="#4D2090" BlurRadius="18" ShadowDepth="0" Opacity="0.5"/>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Buttons
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="SpellButton" TargetType="Button">
+    <Setter Property="Background"   Value="{StaticResource BrScanButton}"/>
+    <Setter Property="Foreground"   Value="{StaticResource BrPatronusCore}"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BrPatronusGlow}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontSize"     Value="13"/>
+    <Setter Property="FontWeight"   Value="SemiBold"/>
+    <Setter Property="Padding"      Value="18,8"/>
+    <Setter Property="Cursor"       Value="Hand"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <Border.Effect>
+              <DropShadowEffect x:Name="BtnGlow" Color="#7B3FE4" BlurRadius="6" ShadowDepth="0" Opacity="0.5"/>
+            </Border.Effect>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrScanButtonHover}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#150830"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
+    <Setter Property="BorderBrush"  Value="{StaticResource BrCritical}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="4"
+                  Padding="{TemplateBinding Padding}">
+            <Border.Effect>
+              <DropShadowEffect x:Name="BtnGlow" Color="#FF2D55" BlurRadius="6" ShadowDepth="0" Opacity="0.4"/>
+            </Border.Effect>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="#FF6070"/>
+              <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
+    <Setter Property="Background"  Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="FontSize"    Value="12"/>
+    <Setter Property="Padding"     Value="12,6"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       TextBox
+       ═══════════════════════════════════════════════ -->
+  <Style TargetType="TextBox">
+    <Setter Property="Background"        Value="#0D0D28"/>
+    <Setter Property="Foreground"        Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="BorderBrush"       Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="BorderThickness"   Value="1"/>
+    <Setter Property="CaretBrush"        Value="{StaticResource BrPatronusGlow}"/>
+    <Setter Property="SelectionBrush"    Value="#3D2080"/>
+    <Setter Property="Padding"           Value="6,4"/>
+    <Setter Property="FontSize"          Value="12"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       ComboBox
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="WraithComboBoxItem" TargetType="ComboBoxItem">
+    <Setter Property="Foreground" Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="Background" Value="#0D0D28"/>
+    <Setter Property="Padding" Value="6,3"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="#1A0D3D"/>
+        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+      </Trigger>
+      <Trigger Property="IsHighlighted" Value="True">
+        <Setter Property="Background" Value="#2E1A5E"/>
+        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+      </Trigger>
+      <Trigger Property="IsSelected" Value="True">
+        <Setter Property="Background" Value="#2E1A5E"/>
+        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style TargetType="ComboBox">
+    <Setter Property="Background"      Value="#0D0D28"/>
+    <Setter Property="Foreground"      Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding"         Value="6,3"/>
+    <Setter Property="FontSize"        Value="12"/>
+    <Setter Property="ItemContainerStyle" Value="{StaticResource WraithComboBoxItem}"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       ListView / GridView
+       ═══════════════════════════════════════════════ -->
+  <Style TargetType="ListView">
+    <Setter Property="Background"      Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Foreground"      Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="FontSize"        Value="12"/>
+    <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+    <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+    <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+  </Style>
+
+  <Style TargetType="ListViewItem">
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Padding"    Value="4,3"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{StaticResource BrPatronusSilver}"/>
+    <Style.Triggers>
+      <Trigger Property="IsSelected" Value="True">
+        <Setter Property="Background" Value="#2E1A5E"/>
+        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+      </Trigger>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="#1A0D3D"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style TargetType="GridViewColumnHeader">
+    <Setter Property="Background"      Value="#16163A"/>
+    <Setter Property="Foreground"      Value="{StaticResource BrGryffindorGold}"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="BorderThickness" Value="0,0,1,1"/>
+    <Setter Property="Padding"         Value="8,5"/>
+    <Setter Property="FontWeight"      Value="SemiBold"/>
+    <Setter Property="FontSize"        Value="11"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       ScrollBar
+       ═══════════════════════════════════════════════ -->
+  <Style TargetType="ScrollBar">
+    <Setter Property="Background" Value="#0A0A1E"/>
+    <Setter Property="Foreground" Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Width"      Value="8"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Severity badge style (TextBlock)
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="SeverityBadge" TargetType="Border">
+    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="Padding"      Value="5,1"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Summary count block
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="SummaryBlock" TargetType="Border">
+    <Setter Property="CornerRadius"    Value="6"/>
+    <Setter Property="Padding"         Value="12,6"/>
+    <Setter Property="Margin"          Value="4,0"/>
+    <Setter Property="MinWidth"        Value="70"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="Effect">
+      <Setter.Value>
+        <DropShadowEffect BlurRadius="10" ShadowDepth="0" Opacity="0.5"/>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Log TextBox
+       ═══════════════════════════════════════════════ -->
+  <Style x:Key="LogBox" TargetType="TextBox">
+    <Setter Property="Background"      Value="#06061A"/>
+    <Setter Property="Foreground"      Value="#7ABFAA"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="FontFamily"      Value="Consolas"/>
+    <Setter Property="FontSize"        Value="11"/>
+    <Setter Property="IsReadOnly"      Value="True"/>
+    <Setter Property="TextWrapping"    Value="Wrap"/>
+    <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+    <Setter Property="Padding"         Value="6"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Separator
+       ═══════════════════════════════════════════════ -->
+  <Style TargetType="Separator">
+    <Setter Property="Background"  Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Height"      Value="1"/>
+    <Setter Property="Margin"      Value="0,4"/>
+  </Style>
+
+  <!-- ═══════════════════════════════════════════════
+       Label / TextBlock defaults
+       ═══════════════════════════════════════════════ -->
+  <Style TargetType="TextBlock">
+    <Setter Property="Foreground"  Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="FontFamily"  Value="{StaticResource FntWraith}"/>
+  </Style>
+
+  <Style x:Key="GoldLabel" TargetType="TextBlock">
+    <Setter Property="Foreground"  Value="{StaticResource BrGryffindorGold}"/>
+    <Setter Property="FontWeight"  Value="SemiBold"/>
+    <Setter Property="FontSize"    Value="11"/>
+  </Style>
+
+  <Style x:Key="TitleLabel" TargetType="TextBlock">
+    <Setter Property="Foreground"  Value="{StaticResource BrPatronusCore}"/>
+    <Setter Property="FontSize"    Value="28"/>
+    <Setter Property="FontWeight"  Value="Bold"/>
+    <Setter Property="Effect">
+      <Setter.Value>
+        <DropShadowEffect Color="{StaticResource ColPatronusGlow}" BlurRadius="20" ShadowDepth="0" Opacity="0.9"/>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="SubtitleLabel" TargetType="TextBlock">
+    <Setter Property="Foreground"  Value="{StaticResource BrGryffindorGold}"/>
+    <Setter Property="FontSize"    Value="12"/>
+    <Setter Property="FontStyle"   Value="Italic"/>
+    <Setter Property="Effect">
+      <Setter.Value>
+        <DropShadowEffect Color="{StaticResource ColGryffindorGold}" BlurRadius="8" ShadowDepth="0" Opacity="0.6"/>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- CheckBox -->
+  <Style TargetType="CheckBox">
+    <Setter Property="Foreground"  Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="FontSize"    Value="12"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <!-- ProgressBar -->
+  <Style TargetType="ProgressBar">
+    <Setter Property="Background"   Value="#0D0D28"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Foreground"   Value="{StaticResource BrPatronusGlow}"/>
+    <Setter Property="Height"       Value="4"/>
+  </Style>
+
+</ResourceDictionary>

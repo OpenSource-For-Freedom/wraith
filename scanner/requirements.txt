@@ -1,0 +1,5 @@
+yara-python>=4.3.0
+pywin32>=306
+psutil>=5.9.0
+requests>=2.31.0
+colorama>=0.4.6

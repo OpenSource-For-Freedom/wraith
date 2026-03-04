@@ -1,0 +1,118 @@
+# W R A I T H
+**Windows Runtime Analysis & Intrusion Threat Hunter**  
+*"Expecto Patronum"*
+
+A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
+
+---
+
+## Requirements
+
+| Dependency | Minimum | Notes |
+|---|---|---|
+| Windows | 10 / 11 | x64 |
+| .NET SDK | 8.0 | [Download](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| Python | 3.10+ | [Download](https://python.org/downloads/) — check **Add to PATH** |
+| Administrator | Required | UAC prompt on launch |
+
+---
+
+## Quick Start
+
+```bat
+git clone https://github.com/YOUR_USERNAME/wraith.git
+cd wraith
+LAUNCH.bat
+```
+
+`LAUNCH.bat` will on first run:
+1. Create a Python virtual environment (`.venv/`)
+2. Install all Python dependencies
+3. Build the .NET 8 WPF app (Release)
+4. Create a desktop shortcut
+5. Launch WRAITH
+
+---
+
+## Scan Modules
+
+| Module | What it hunts |
+|---|---|
+| **YARA** | Signature matches — APT28/Sofacy, Lazarus, GrizzlyBear, WannaCry, RATs, webshells, malicious scripts |
+| **Heuristics** | Behavioural entropy analysis, obfuscated commands, suspicious parent-child process trees |
+| **Persistence** | Registry Run keys, scheduled tasks, startup folders, services, WMI subscriptions |
+| **Processes** | Injected threads, hollowed images, unbacked memory, unsigned binaries in unusual paths |
+| **Network** | Outbound connections to suspicious ranges, listening ports, unusual DNS activity |
+| **Events** | Windows Event Log anomaly parsing (configurable look-back window, 1–720 h) |
+| **CISA KEV** | Live check of CISA's Known Exploited Vulnerabilities catalogue against installed software |
+| **NPM Supply Chain** | Typosquat and dependency-confusion checks across local npm projects |
+| **Windows Security** | Firewall state, Defender status, audit policy gaps, UAC configuration |
+| **Rootkit** | SSDT / IDT hooks, hidden drivers, DKOM object unlinking indicators |
+| **ADS** | Alternate Data Streams on NTFS — a classic hiding place for payloads |
+| **Browser** | Suspicious extensions, modified hosts file, malicious bookmark indicators |
+| **Defender** | Integration layer — surfaces quarantined items and threat history |
+| **Credentials** | SAM / LSA / DPAPI anomalies, plain-text credential indicators in memory |
+
+---
+
+## Usage
+
+### GUI (recommended)
+```bat
+LAUNCH.bat
+```
+- Set scan root (default `C:\`)
+- Choose **Full Scan** or **Quick Persistence Only**
+- Set Event Log look-back window (hours)
+- Click **EXPECTO PATRONUM**
+- Export findings as JSON / CSV / HTML from the toolbar
+
+### Headless quick scan (no build required)
+```powershell
+.\quick-scan.ps1
+.\quick-scan.ps1 -Hours 168 -OutPath C:\wraith-report.json
+```
+
+### Stop a running instance
+```bat
+LAUNCH.bat -Close
+```
+
+---
+
+## Output
+
+Findings are rated **CRITICAL / HIGH / MEDIUM / LOW / INFO** and include:
+
+- Rule / heuristic name that triggered
+- Full file path or process image
+- Entropy score (for binary analysis)
+- Process status (live / terminated)
+- Last-run timestamp
+- One-click process kill for live threats
+
+Reports can be exported to **JSON**, **CSV**, or a self-contained **HTML** page.
+
+---
+
+## Project Structure
+
+```
+WRAITH/                  .NET 8 WPF front-end
+  Models/                ThreatFinding, ScanResult
+  ViewModels/            MainViewModel (MVVM)
+  Services/              ScanOrchestrator, ReportExporter
+  Converters/            Severity -> colour, etc.
+scanner/                 Python scan engine (14 modules)
+  rules/                 Bundled YARA rule sets
+quick-scan.ps1           Standalone headless scanner (no build needed)
+WRAITH.ps1               Master launcher / venv bootstrap
+LAUNCH.bat               Entry point
+SETUP.bat                One-time dependency installer
+```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)

@@ -1,0 +1,763 @@
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using WRAITH.Models;
+using WRAITH.ViewModels;
+
+namespace WRAITH;
+
+public partial class MainWindow : Window
+{
+    private readonly List<Storyboard> _patronusBoards = new();
+
+    // ── Ghost wraith ambient sweep ─────────────────────────────────────
+    private readonly DispatcherTimer _ghostTimer = new();
+    private readonly Random          _ghostRng   = new();
+    private          int             _ghostActive = 0;   // active pass count
+
+    // ── Win32 for window resize via custom chrome ───────────────────────
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Closing += (_, _) =>
+        {
+            if (DataContext is MainViewModel vm)
+                vm.Shutdown();
+            Environment.Exit(0);
+        };
+    }
+
+    // ── Hook into ViewModel events ─────────────────────────────────────
+    private void OnDataContextChanged(object s, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.OldValue is MainViewModel old)
+            old.PropertyChanged -= VmPropertyChanged;
+        if (e.NewValue is MainViewModel vm)
+            vm.PropertyChanged += VmPropertyChanged;
+    }
+
+    private void VmPropertyChanged(object? s, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.IsScanning))
+        {
+            var vm = (MainViewModel)DataContext;
+            Dispatcher.Invoke(() =>
+            {
+                if (vm.IsScanning)
+                {
+                    TriggerWooshAnimation();
+                    StartPatronusAnimation();
+                }
+                else StopPatronusAnimation();
+            });
+        }
+    }
+
+    private void OnLoaded(object s, RoutedEventArgs e)
+    {
+        // Pulse the status dot once
+        PulseSpinnerDot();
+    }
+
+    // ── Custom chrome ──────────────────────────────────────────────────
+    private void TitleBar_MouseDown(object s, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+        {
+            if (e.ClickCount == 2) { ToggleMaximize(); return; }
+            ReleaseCapture();
+            SendMessage(new System.Windows.Interop.WindowInteropHelper(this).Handle,
+                0xA1, new IntPtr(2), IntPtr.Zero);
+        }
+    }
+
+    private void BtnClose_Click(object s, RoutedEventArgs e) => Close();
+    private void BtnMinimize_Click(object s, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void BtnMaximize_Click(object s, RoutedEventArgs e) => ToggleMaximize();
+
+    private void ToggleMaximize()
+        => WindowState = WindowState == WindowState.Maximized
+               ? WindowState.Normal : WindowState.Maximized;
+
+    // ── Folder browse ─────────────────────────────────────────────────
+    private void BtnBrowse_Click(object s, RoutedEventArgs e)
+    {
+        var dlg = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Select scan root folder",
+            SelectedPath = System.IO.Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\"
+        };
+        if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (DataContext is MainViewModel vm)
+                vm.ScanPath = dlg.SelectedPath;
+    }
+
+    // ── Auto-scroll log ───────────────────────────────────────────────
+    private void TxtLog_TextChanged(object s, TextChangedEventArgs e)
+    {
+        if (s is TextBox tb) tb.ScrollToEnd();
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Patronus Spell Animation
+    //  Three expanding glowing rings spray outward from centre while scan runs.
+    // ══════════════════════════════════════════════════════════════════
+    private void StartPatronusAnimation()
+    {
+        _patronusBoards.Clear();
+
+        var rings = new[] { Ring1, Ring2, Ring3 };
+        var colours = new[] { "#60A8C8E8", "#50D4AF37", "#40A8C8E8" };
+        var delays  = new[] { 0.0, 0.6, 1.2 };
+        var durations = new[] { 2.8, 3.4, 4.0 };
+
+        // Place rings at canvas centre
+        PatronusCanvas.SizeChanged += RepositionRings;
+        RepositionRings(null, null);
+
+        for (int i = 0; i < rings.Length; i++)
+        {
+            var ring = rings[i];
+            var sb   = BuildRingStoryboard(ring, colours[i], delays[i], durations[i]);
+            sb.RepeatBehavior = RepeatBehavior.Forever;
+            _patronusBoards.Add(sb);
+            sb.Begin();
+        }
+
+        // Pulse spinner dot green
+        AnimateSpinnerDot(Color.FromRgb(0xA8, 0xC8, 0xE8), true);
+
+        // Start ambient ghost wraith sweeps
+        StartGhostAnimation();
+    }
+
+    private void StopPatronusAnimation()
+    {
+        foreach (var sb in _patronusBoards) sb.Stop();
+        _patronusBoards.Clear();
+        PatronusCanvas.SizeChanged -= RepositionRings;
+
+        // Reset rings
+        foreach (var r in new[] { Ring1, Ring2, Ring3 })
+        { r.Width = 0; r.Height = 0; }
+
+        AnimateSpinnerDot(Color.FromRgb(0x3D, 0x3D, 0x5A), false);
+
+        // Stop ghost sweeps
+        StopGhostAnimation();
+    }
+
+    private void RepositionRings(object? s, SizeChangedEventArgs? e)
+    {
+        double cx = PatronusCanvas.ActualWidth  > 0 ? PatronusCanvas.ActualWidth  / 2 : 500;
+        double cy = PatronusCanvas.ActualHeight > 0 ? PatronusCanvas.ActualHeight / 2 : 80;
+        foreach (var r in new[] { Ring1, Ring2, Ring3 })
+        {
+            Canvas.SetLeft(r, cx);
+            Canvas.SetTop(r,  cy);
+        }
+    }
+
+    private static Storyboard BuildRingStoryboard(Ellipse ring, string colorHex,
+        double delaySeconds, double durationSeconds)
+    {
+        var sb   = new Storyboard();
+        var delay = TimeSpan.FromSeconds(delaySeconds);
+        var dur   = new Duration(TimeSpan.FromSeconds(durationSeconds));
+
+        // Width 0 → 400
+        var wAnim = new DoubleAnimation(0, 400, dur) { BeginTime = delay, EasingFunction = new QuadraticEase() };
+        Storyboard.SetTarget(wAnim, ring);
+        Storyboard.SetTargetProperty(wAnim, new PropertyPath(WidthProperty));
+        sb.Children.Add(wAnim);
+
+        // Height 0 → 400
+        var hAnim = new DoubleAnimation(0, 400, dur) { BeginTime = delay, EasingFunction = new QuadraticEase() };
+        Storyboard.SetTarget(hAnim, ring);
+        Storyboard.SetTargetProperty(hAnim, new PropertyPath(HeightProperty));
+        sb.Children.Add(hAnim);
+
+        // X offset so ring expands from centre: Canvas.Left -= width/2
+        var xAnim = new DoubleAnimation(0, -200, dur) { BeginTime = delay };
+        Storyboard.SetTarget(xAnim, ring);
+        Storyboard.SetTargetProperty(xAnim, new PropertyPath(Canvas.LeftProperty));
+        sb.Children.Add(xAnim);
+
+        var yAnim = new DoubleAnimation(0, -200, dur) { BeginTime = delay };
+        Storyboard.SetTarget(yAnim, ring);
+        Storyboard.SetTargetProperty(yAnim, new PropertyPath(Canvas.TopProperty));
+        sb.Children.Add(yAnim);
+
+        // Opacity: 0.7 → 0 (fade out as it expands)
+        var oAnim = new DoubleAnimation(0.7, 0, dur) { BeginTime = delay };
+        Storyboard.SetTarget(oAnim, ring);
+        Storyboard.SetTargetProperty(oAnim, new PropertyPath(OpacityProperty));
+        sb.Children.Add(oAnim);
+
+        return sb;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Woosh: Purge-rush particle burst on scan launch (one-shot)
+    // ══════════════════════════════════════════════════════════════════
+    private void TriggerWooshAnimation()
+    {
+        WooshCanvas.Children.Clear();
+        WooshCanvas.Visibility = Visibility.Visible;
+
+        var rng = new Random();
+        double W = Math.Max(ActualWidth,  1300);
+        double H = Math.Max(ActualHeight,  820);
+
+        var sb     = new Storyboard();
+        double maxEnd = 0.0;
+
+        // ── Flash: brief purple-white bloom at the moment of launch ──────
+        var flash = new System.Windows.Shapes.Rectangle
+        {
+            Width   = W,
+            Height  = H,
+            Opacity = 0,
+            Fill    = new LinearGradientBrush(
+                Color.FromArgb(0,   80,  0, 160),
+                Color.FromArgb(110, 80,  0, 160), 0)
+            {
+                StartPoint = new System.Windows.Point(0, 0.5),
+                EndPoint   = new System.Windows.Point(1, 0.5)
+            }
+        };
+        Canvas.SetLeft(flash, 0);
+        Canvas.SetTop(flash,  0);
+        WooshCanvas.Children.Add(flash);
+
+        var flashIn  = new DoubleAnimation(0, 0.35, new Duration(TimeSpan.FromSeconds(0.07)));
+        var flashOut = new DoubleAnimation(0.35, 0, new Duration(TimeSpan.FromSeconds(0.28)))
+                       { BeginTime = TimeSpan.FromSeconds(0.07) };
+        Storyboard.SetTarget(flashIn,  flash);
+        Storyboard.SetTarget(flashOut, flash);
+        Storyboard.SetTargetProperty(flashIn,  new PropertyPath(OpacityProperty));
+        Storyboard.SetTargetProperty(flashOut, new PropertyPath(OpacityProperty));
+        sb.Children.Add(flashIn);
+        sb.Children.Add(flashOut);
+
+        // ── Speed streaks ────────────────────────────────────────────────
+        //   Thin horizontal rectangles with a transparent-left → vivid-right gradient
+        //   so they have a sharp leading edge and a fading tail (reversed since they
+        //   fly left-to-right the gradient should be vivid leading, fade trailing —
+        //   we set StartPoint right→left so the bright end is at the front)
+        (Color tail, Color head)[] streakPalette =
+        [
+            (Color.FromArgb(  0, 168, 200, 232), Color.FromArgb(180, 168, 200, 232)), // ice blue
+            (Color.FromArgb(  0,  79, 195, 247), Color.FromArgb(160,  79, 195, 247)), // cyan
+            (Color.FromArgb(  0, 212, 175,  55), Color.FromArgb(140, 212, 175,  55)), // gold
+            (Color.FromArgb(  0, 176, 140, 240), Color.FromArgb(150, 176, 140, 240)), // violet
+            (Color.FromArgb(  0, 255, 255, 255), Color.FromArgb(120, 255, 255, 255)), // white
+            (Color.FromArgb(  0, 140, 100, 255), Color.FromArgb(130, 140, 100, 255)), // purple
+        ];
+
+        for (int i = 0; i < 24; i++)
+        {
+            double length = rng.Next(60, 620);
+            double thick  = rng.NextDouble() * 3.5 + 0.5;
+            double yPos   = rng.NextDouble() * H;
+            double delay  = rng.NextDouble() * 0.42;
+            double dur    = rng.NextDouble() * 0.38 + 0.22;
+            var (tail, head) = streakPalette[rng.Next(streakPalette.Length)];
+
+            // Gradient: head (bright) on the right end, tail (transparent) on the left
+            var grad = new LinearGradientBrush { StartPoint = new System.Windows.Point(0, 0.5), EndPoint = new System.Windows.Point(1, 0.5) };
+            grad.GradientStops.Add(new GradientStop(tail, 0.0));
+            grad.GradientStops.Add(new GradientStop(head, 1.0));
+
+            var streak = new System.Windows.Shapes.Rectangle
+            {
+                Width  = length,
+                Height = thick,
+                Fill   = grad,
+            };
+            Canvas.SetLeft(streak, -length - 30);
+            Canvas.SetTop(streak, yPos);
+            WooshCanvas.Children.Add(streak);
+
+            var move = new DoubleAnimation(-length - 30, W + 60,
+                new Duration(TimeSpan.FromSeconds(dur)))
+            {
+                BeginTime      = TimeSpan.FromSeconds(delay),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            Storyboard.SetTarget(move, streak);
+            Storyboard.SetTargetProperty(move, new PropertyPath(Canvas.LeftProperty));
+            sb.Children.Add(move);
+
+            maxEnd = Math.Max(maxEnd, delay + dur);
+        }
+
+        // ── Dust motes ───────────────────────────────────────────────────
+        //   Small squished ellipses that shoot out, drift slightly in Y, and fade
+        for (int i = 0; i < 45; i++)
+        {
+            double w      = rng.NextDouble() * 7  + 2.0;
+            double h      = w * (rng.NextDouble() * 0.45 + 0.12);  // squish to look like flying debris
+            double xStart = -(w + rng.NextDouble() * 180);
+            double yPos   = rng.NextDouble() * H;
+            double delay  = rng.NextDouble() * 0.55;
+            double dur    = rng.NextDouble() * 0.45 + 0.18;
+            double travelX = W * (0.55 + rng.NextDouble() * 0.7);
+            double driftY  = (rng.NextDouble() - 0.5) * 90;
+            double opStart = rng.NextDouble() * 0.75 + 0.15;
+
+            // Colour: ghostly white-blue-violet range
+            byte br = (byte)rng.Next(140, 256);
+            byte bg = (byte)rng.Next(155, 245);
+            byte bb = (byte)rng.Next(200, 256);
+
+            var dot = new Ellipse
+            {
+                Width   = w,
+                Height  = h,
+                Fill    = new SolidColorBrush(Color.FromRgb(br, bg, bb)),
+                Opacity = opStart,
+            };
+            Canvas.SetLeft(dot, xStart);
+            Canvas.SetTop(dot,  yPos);
+            WooshCanvas.Children.Add(dot);
+
+            var mx = new DoubleAnimation(xStart, xStart + travelX,
+                new Duration(TimeSpan.FromSeconds(dur)))
+            {
+                BeginTime      = TimeSpan.FromSeconds(delay),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            Storyboard.SetTarget(mx, dot);
+            Storyboard.SetTargetProperty(mx, new PropertyPath(Canvas.LeftProperty));
+            sb.Children.Add(mx);
+
+            var my = new DoubleAnimation(yPos, yPos + driftY,
+                new Duration(TimeSpan.FromSeconds(dur)))
+            { BeginTime = TimeSpan.FromSeconds(delay) };
+            Storyboard.SetTarget(my, dot);
+            Storyboard.SetTargetProperty(my, new PropertyPath(Canvas.TopProperty));
+            sb.Children.Add(my);
+
+            var fade = new DoubleAnimation(opStart, 0,
+                new Duration(TimeSpan.FromSeconds(dur * 0.5)))
+            { BeginTime = TimeSpan.FromSeconds(delay + dur * 0.5) };
+            Storyboard.SetTarget(fade, dot);
+            Storyboard.SetTargetProperty(fade, new PropertyPath(OpacityProperty));
+            sb.Children.Add(fade);
+
+            maxEnd = Math.Max(maxEnd, delay + dur);
+        }
+
+        // ── Shockwave ring: a single fast-expanding ellipse from screen centre ──
+        var shock = new Ellipse
+        {
+            Width   = 0,
+            Height  = 0,
+            Stroke  = new SolidColorBrush(Color.FromArgb(200, 130, 80, 255)),
+            StrokeThickness = 3,
+            Opacity = 1,
+        };
+        double cx = W / 2;
+        double cy = H / 2;
+        Canvas.SetLeft(shock, cx);
+        Canvas.SetTop(shock,  cy);
+        WooshCanvas.Children.Add(shock);
+
+        double shockFinal = Math.Max(W, H) * 1.2;
+        var shW = new DoubleAnimation(0, shockFinal,
+            new Duration(TimeSpan.FromSeconds(0.55)))
+        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+        var shH = new DoubleAnimation(0, shockFinal,
+            new Duration(TimeSpan.FromSeconds(0.55)))
+        { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } };
+        var shX = new DoubleAnimation(cx, cx - shockFinal / 2,
+            new Duration(TimeSpan.FromSeconds(0.55)));
+        var shY = new DoubleAnimation(cy, cy - shockFinal / 2,
+            new Duration(TimeSpan.FromSeconds(0.55)));
+        var shO = new DoubleAnimation(1, 0,
+            new Duration(TimeSpan.FromSeconds(0.55)));
+        foreach (var a in new Timeline[] { shW, shH, shX, shY, shO })
+            Storyboard.SetTarget(a, shock);
+        Storyboard.SetTargetProperty(shW, new PropertyPath(WidthProperty));
+        Storyboard.SetTargetProperty(shH, new PropertyPath(HeightProperty));
+        Storyboard.SetTargetProperty(shX, new PropertyPath(Canvas.LeftProperty));
+        Storyboard.SetTargetProperty(shY, new PropertyPath(Canvas.TopProperty));
+        Storyboard.SetTargetProperty(shO, new PropertyPath(OpacityProperty));
+        sb.Children.Add(shW); sb.Children.Add(shH);
+        sb.Children.Add(shX); sb.Children.Add(shY);
+        sb.Children.Add(shO);
+
+        maxEnd = Math.Max(maxEnd, 0.55);
+
+        sb.Duration = new Duration(TimeSpan.FromSeconds(maxEnd + 0.15));
+        sb.Completed += (_, _) =>
+        {
+            WooshCanvas.Children.Clear();
+            WooshCanvas.Visibility = Visibility.Collapsed;
+        };
+        sb.Begin();
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Ghost Wraith Ambient Sweeps
+    //  While scanning: a DispatcherTimer fires every 4-11s and spawns a
+    //  spectral form that glides across the whole window — varying Y,
+    //  direction, speed, opacity — like something hunting through the UI.
+    // ══════════════════════════════════════════════════════════════════
+    private void StartGhostAnimation()
+    {
+        GhostCanvas.Visibility = Visibility.Visible;
+        _ghostTimer.Interval   = RandomGhostInterval();
+        _ghostTimer.Tick       += GhostTimer_Tick;
+        _ghostTimer.Start();
+        // Spawn one immediately so it doesn't feel empty
+        SpawnWraithPass();
+    }
+
+    private void StopGhostAnimation()
+    {
+        _ghostTimer.Stop();
+        _ghostTimer.Tick -= GhostTimer_Tick;
+        GhostCanvas.Children.Clear();
+        GhostCanvas.Visibility = Visibility.Collapsed;
+        _ghostActive = 0;
+    }
+
+    private void GhostTimer_Tick(object? s, EventArgs e)
+    {
+        _ghostTimer.Interval = RandomGhostInterval();
+        // Cap concurrent passes to avoid stacking too many on slow machines
+        if (_ghostActive < 3) SpawnWraithPass();
+    }
+
+    private TimeSpan RandomGhostInterval()
+        => TimeSpan.FromSeconds(_ghostRng.NextDouble() * 7.0 + 4.0);  // 4 – 11 s
+
+    private void SpawnWraithPass()
+    {
+        double W = Math.Max(ActualWidth,  1300);
+        double H = Math.Max(ActualHeight,  820);
+
+        bool   ltr   = _ghostRng.NextDouble() > 0.28;              // 72% left-to-right
+        double scale = _ghostRng.NextDouble() * 0.65 + 0.45;       // 0.45 – 1.10
+        double bW    = 110 * scale;                                 // wraith bounding W
+        double bH    = 155 * scale;                                 // wraith bounding H
+
+        double peakOpacity = _ghostRng.NextDouble() * 0.35 + 0.50; // 0.50 – 0.85
+        double totalDur    = _ghostRng.NextDouble() * 3.0 + 3.0;   // 3.0 – 6.0 s
+
+        double startX = ltr ? -(bW + 20)  : W + 20;
+        double endX   = ltr ?  W  + 20    : -(bW + 20);
+        double travel = endX - startX;
+
+        double entryY = _ghostRng.NextDouble() * (H * 0.88) - bH * 0.2;
+
+        // Ghost colour palette
+        Color[] palette =
+        [
+            Color.FromRgb(168, 200, 232),   // ice blue
+            Color.FromRgb(176, 140, 240),   // violet
+            Color.FromRgb(140, 180, 255),   // deep blue
+            Color.FromRgb(200, 230, 255),   // pale white-blue
+            Color.FromRgb(212, 175,  55),   // gold (rare)
+        ];
+        Color gc = _ghostRng.NextDouble() > 0.12
+            ? palette[_ghostRng.Next(4)]
+            : palette[4];
+
+        // ── Container: all elements travel together via Canvas.Left/Top ──────
+        var container = new Canvas { Opacity = 0 };
+        Canvas.SetLeft(container, startX);
+        Canvas.SetTop(container,  entryY);
+
+        // ── Build wraith silhouette (StreamGeometry) ──────────────────────
+        // All coords are normalized at scale=1.0, then scaled via helper
+        System.Windows.Point P(double x, double y) => new(x * scale, y * scale);
+
+        var geo = new StreamGeometry();
+        using (var ctx = geo.Open())
+        {
+            ctx.BeginFigure(P(55, 0), isFilled: true, isClosed: true);
+            // Hood — left Bezier curve
+            ctx.BezierTo(P(38, 4), P(20, 14), P(20, 32), isStroked: true, isSmoothJoin: true);
+            // Left shoulder
+            ctx.LineTo(P( 4, 54), isStroked: true, isSmoothJoin: false);
+            // Left body
+            ctx.LineTo(P(14, 92), isStroked: true, isSmoothJoin: false);
+            // Left tattered robe hem  (5 jags, alternating out/in)
+            ctx.LineTo(P( 1, 114), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(16,  98), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P( 4, 134), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(22, 114), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(12, 152), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(32, 130), isStroked: true, isSmoothJoin: false);
+            // Robe bottom centre
+            ctx.LineTo(P(55, 148), isStroked: true, isSmoothJoin: false);
+            // Right tattered robe hem (mirror)
+            ctx.LineTo(P(78, 130), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(98, 152), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(88, 114), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(106, 134), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P( 94,  98), isStroked: true, isSmoothJoin: false);
+            ctx.LineTo(P(109, 114), isStroked: true, isSmoothJoin: false);
+            // Right body
+            ctx.LineTo(P(96, 92), isStroked: true, isSmoothJoin: false);
+            // Right shoulder
+            ctx.LineTo(P(106, 54), isStroked: true, isSmoothJoin: false);
+            // Hood — right Bezier back to peak
+            ctx.BezierTo(P(90, 14), P(72, 4), P(55, 0), isStroked: true, isSmoothJoin: true);
+        }
+        geo.Freeze();
+
+        // Radial fill: bright head/chest → transparent tattered hem
+        var fill = new RadialGradientBrush
+        {
+            Center         = new System.Windows.Point(0.50, 0.18),
+            GradientOrigin = new System.Windows.Point(0.50, 0.14),
+            RadiusX        = 0.62,
+            RadiusY        = 0.58,
+        };
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(240, gc.R, gc.G, gc.B), 0.00));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(160, gc.R, gc.G, gc.B), 0.35));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb( 60, gc.R, gc.G, gc.B), 0.65));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+
+        // RTL: mirror the silhouette horizontally around the hood centre
+        System.Windows.Media.Transform bodyTransform =
+            ltr ? Transform.Identity
+                : new ScaleTransform(-1, 1, 55 * scale, 0);
+
+        var body = new Path
+        {
+            Data            = geo,
+            Fill            = fill,
+            Stroke          = new SolidColorBrush(Color.FromArgb(50, gc.R, gc.G, gc.B)),
+            StrokeThickness = 0.7,
+            RenderTransform = bodyTransform,
+            Effect          = new DropShadowEffect
+            {
+                Color       = gc,
+                BlurRadius  = 16 * scale,
+                ShadowDepth = 0,
+                Opacity     = 0.80,
+            }
+        };
+        container.Children.Add(body);
+
+        // ── Glowing eyes inside the hood ────────────────────────────────
+        // Hood interior eye positions (normalized): (36,22) and (74,22)
+        foreach (double eyeNX in new[] { 36.0, 74.0 })
+        {
+            // For RTL, mirror X around hood centre (55)
+            double ex = ltr ? eyeNX * scale : (110.0 - eyeNX) * scale;
+            double ey = 22.0 * scale;
+            double er =  3.0 * scale;
+
+            var eyeFill = new RadialGradientBrush();
+            eyeFill.GradientStops.Add(new GradientStop(Colors.White,                                          0.00));
+            eyeFill.GradientStops.Add(new GradientStop(Color.FromArgb(230, gc.R, gc.G, gc.B),                 0.45));
+            eyeFill.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B),                 1.00));
+
+            var eye = new Ellipse
+            {
+                Width  = er * 2,
+                Height = er * 1.3,
+                Fill   = eyeFill,
+                Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 7 * scale, ShadowDepth = 0, Opacity = 0.95 }
+            };
+            Canvas.SetLeft(eye, ex - er);
+            Canvas.SetTop(eye,  ey - er * 0.65);
+            container.Children.Add(eye);
+
+            // Each eye pulses at a slightly different rate
+            double pulseSpeed = _ghostRng.NextDouble() * 0.4 + 0.5;
+            eye.BeginAnimation(OpacityProperty,
+                new DoubleAnimation(0.55, 1.0, new Duration(TimeSpan.FromSeconds(pulseSpeed)))
+                {
+                    AutoReverse    = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    BeginTime      = TimeSpan.FromSeconds(_ghostRng.NextDouble() * 0.4),
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                });
+        }
+
+        // ── Robe energy wisps (soft glows drifting from the lower tatters) ───
+        int wispCount = _ghostRng.Next(3, 7);
+        for (int i = 0; i < wispCount; i++)
+        {
+            double wr = (_ghostRng.NextDouble() * 10 + 5) * scale;
+            byte   wa = (byte)(_ghostRng.NextDouble() * 90 + 30);
+            var    wg = new RadialGradientBrush();
+            wg.GradientStops.Add(new GradientStop(Color.FromArgb(wa, gc.R, gc.G, gc.B), 0.0));
+            wg.GradientStops.Add(new GradientStop(Color.FromArgb( 0, gc.R, gc.G, gc.B), 1.0));
+            var wisp = new Ellipse { Width = wr * 2, Height = wr * 0.7, Fill = wg };
+            double wx = bW * 0.05 + _ghostRng.NextDouble() * bW * 0.90;
+            double wy = bH * 0.50 + _ghostRng.NextDouble() * bH * 0.48;
+            Canvas.SetLeft(wisp, wx - wr);
+            Canvas.SetTop(wisp,  wy - wr * 0.35);
+            container.Children.Add(wisp);
+        }
+
+        // ── Dust motes trailing in the wake ───────────────────────────────
+        int dustCount = _ghostRng.Next(8, 18);
+        for (int i = 0; i < dustCount; i++)
+        {
+            double dr  = (_ghostRng.NextDouble() * 3.5 + 1.0) * scale;
+            byte   da  = (byte)(_ghostRng.NextDouble() * 90 + 20);
+            // Motes spread behind the direction of travel
+            double dx  = ltr
+                ? -(dr + _ghostRng.NextDouble() * bW * 0.85)
+                :  bW + _ghostRng.NextDouble() * bW * 0.85;
+            double dy  = bH * 0.25 + _ghostRng.NextDouble() * bH * 0.72;
+            var dust = new Ellipse
+            {
+                Width  = dr * (_ghostRng.NextDouble() * 2.2 + 0.8),
+                Height = dr * 0.38,
+                Fill   = new SolidColorBrush(Color.FromArgb(da, gc.R, gc.G, gc.B))
+            };
+            Canvas.SetLeft(dust, dx);
+            Canvas.SetTop(dust,  dy);
+            container.Children.Add(dust);
+        }
+
+        GhostCanvas.Children.Add(container);
+        _ghostActive++;
+
+        // ── X movement: fast burst in → slow hunt → fast burst out ───────────
+        var xAnim = new DoubleAnimationUsingKeyFrames();
+        xAnim.Duration = new Duration(TimeSpan.FromSeconds(totalDur));
+        // t=0%  : enter from off-screen
+        // t=12% : cover 30% of distance fast (burst entry)
+        // t=35% : slow to hunting crawl across main content
+        // t=55% : still hunting / slightly paused
+        // t=74% : beginning to accelerate out
+        // t=88% : rapid exit starts
+        // t=100%: fully off-screen
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX,              KeyTime.FromPercent(0.00)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel*0.30, KeyTime.FromPercent(0.12),
+            new QuarticEase { EasingMode = EasingMode.EaseOut }));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel*0.48, KeyTime.FromPercent(0.35)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel*0.60, KeyTime.FromPercent(0.55)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel*0.72, KeyTime.FromPercent(0.74)));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(startX + travel*0.82, KeyTime.FromPercent(0.88),
+            new QuarticEase { EasingMode = EasingMode.EaseIn }));
+        xAnim.KeyFrames.Add(new EasingDoubleKeyFrame(endX,                 KeyTime.FromPercent(1.00)));
+        Storyboard.SetTarget(xAnim, container);
+        Storyboard.SetTargetProperty(xAnim, new PropertyPath(Canvas.LeftProperty));
+
+        // ── Y movement: visible swooping dips and rises as the wraith hunts ──
+        double amp   = _ghostRng.NextDouble() * 140 + 100;  // 100–240 px vertical swing
+        double exitY = entryY + (_ghostRng.NextDouble() - 0.5) * amp * 0.6;
+        double[] yPts =
+        [
+            entryY,
+            entryY - amp * (_ghostRng.NextDouble() * 0.55 + 0.28),    // rise on entry
+            entryY + amp * (_ghostRng.NextDouble() * 0.45 + 0.22),    // dive down
+            entryY - amp * (_ghostRng.NextDouble() * 0.60 + 0.15),    // swoop back up (hunting)
+            entryY + amp * (_ghostRng.NextDouble() * 0.35 + 0.12),    // another dip
+            entryY - amp * (_ghostRng.NextDouble() * 0.20 + 0.05),    // slight rise toward exit
+            exitY,                                                      // off-screen
+        ];
+        double[] yTimes = [ 0.00, 0.15, 0.30, 0.50, 0.65, 0.82, 1.00 ];
+
+        var yAnim = new DoubleAnimationUsingKeyFrames();
+        yAnim.Duration = new Duration(TimeSpan.FromSeconds(totalDur));
+        for (int i = 0; i < yPts.Length; i++)
+            yAnim.KeyFrames.Add(new EasingDoubleKeyFrame(yPts[i], KeyTime.FromPercent(yTimes[i]),
+                new SineEase { EasingMode = EasingMode.EaseInOut }));
+        Storyboard.SetTarget(yAnim, container);
+        Storyboard.SetTargetProperty(yAnim, new PropertyPath(Canvas.TopProperty));
+
+        // ── Opacity: materialise → hold → dematerialise ────────────────────
+        var opAnim = new DoubleAnimationUsingKeyFrames();
+        opAnim.Duration = new Duration(TimeSpan.FromSeconds(totalDur));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0,            KeyTime.FromPercent(0.00)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(peakOpacity,  KeyTime.FromPercent(0.12)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(peakOpacity,  KeyTime.FromPercent(0.78)));
+        opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0,            KeyTime.FromPercent(1.00)));
+        Storyboard.SetTarget(opAnim, container);
+        Storyboard.SetTargetProperty(opAnim, new PropertyPath(OpacityProperty));
+
+        // ── Fire directly on the element — reliable for dynamically created objects ──
+        opAnim.Completed += (_, _) =>
+        {
+            GhostCanvas.Children.Remove(container);
+            _ghostActive = Math.Max(0, _ghostActive - 1);
+        };
+
+        container.BeginAnimation(Canvas.LeftProperty,    xAnim);
+        container.BeginAnimation(Canvas.TopProperty,     yAnim);
+        container.BeginAnimation(UIElement.OpacityProperty, opAnim);
+    }
+
+    // ── Spinner dot pulse ─────────────────────────────────────────────
+    private void PulseSpinnerDot()
+    {
+        var anim = new ColorAnimation(
+            Color.FromRgb(0x3D, 0x3D, 0x5A),
+            Color.FromRgb(0xA8, 0xC8, 0xE8),
+            new Duration(TimeSpan.FromSeconds(1.5)))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        SpinnerBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+    }
+
+    private void AnimateSpinnerDot(Color target, bool pulse)
+    {
+        if (pulse)
+        {
+            var anim = new ColorAnimation(
+                Color.FromRgb(0x3D, 0x3D, 0x5A), target,
+                new Duration(TimeSpan.FromSeconds(0.5)))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            SpinnerBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+        }
+        else
+        {
+            var anim = new ColorAnimation(target,
+                new Duration(TimeSpan.FromSeconds(0.3)));
+            SpinnerBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+        }
+    }
+
+    // ── Context menu copy actions ─────────────────────────────────────────
+    private void CopyTitle_Click(object s, RoutedEventArgs e)
+    {
+        if (LvFindings.SelectedItem is ThreatFinding f)
+            System.Windows.Clipboard.SetText(f.Title);
+    }
+
+    private void CopyPath_Click(object s, RoutedEventArgs e)
+    {
+        if (LvFindings.SelectedItem is ThreatFinding f && !string.IsNullOrEmpty(f.Path))
+            System.Windows.Clipboard.SetText(f.Path);
+    }
+
+    // ── Column header click → sort ─────────────────────────────────────
+    private void LvFindings_ColumnHeaderClick(object s, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is GridViewColumnHeader header && header.Tag is string column)
+        {
+            if (DataContext is MainViewModel vm)
+                vm.SortBy(column);
+        }
+    }
+}

@@ -1,0 +1,807 @@
+<Window x:Class="WRAITH.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:WRAITH.ViewModels"
+        xmlns:conv="clr-namespace:WRAITH.Converters"
+        xmlns:core="clr-namespace:WRAITH.Models"
+        Title="WRAITH · Expecto Patronum"
+        Icon="Assets/wraith.png"
+        Height="820" Width="1300" MinHeight="620" MinWidth="900"
+        WindowStartupLocation="CenterScreen"
+        Style="{StaticResource WraithWindow}"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="CanResize">
+
+  <Window.Resources>
+    <conv:SeverityToBrushConverter      x:Key="SevBrush"/>
+    <conv:SeverityToForegroundConverter x:Key="SevFg"/>
+    <conv:SeverityToRowBgConverter      x:Key="SevRowBg"/>
+    <conv:ThreatLevelToBrushConverter   x:Key="ThreatBrush"/>
+    <conv:BoolToVisibilityConverter     x:Key="BoolVis"/>
+    <conv:InvertedBoolToVisibilityConverter x:Key="InvBoolVis"/>
+    <conv:NullToVisibilityConverter     x:Key="NullVis"/>
+    <conv:NullToBoolConverter           x:Key="NullBool"/>
+    <conv:ProcessStatusToBrushConverter x:Key="ProcStatusBrush"/>
+    <conv:ProcessStatusToFgConverter    x:Key="ProcStatusFg"/>
+    <conv:EmptyStringToCollapsedConverter x:Key="EmptyCollapsed"/>
+    <conv:IsLiveToVisibilityConverter   x:Key="IsLiveVis"/>
+  </Window.Resources>
+
+  <Window.DataContext>
+    <vm:MainViewModel/>
+  </Window.DataContext>
+
+  <!-- Outer chrome border -->
+  <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
+          Background="{StaticResource BrWindowBackground}">
+    <Border.Effect>
+      <DropShadowEffect Color="#4D2090" BlurRadius="30" ShadowDepth="0" Opacity="0.6"/>
+    </Border.Effect>
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>       <!-- 0: title bar -->
+        <RowDefinition Height="160"/>        <!-- 1: header / patronus canvas -->
+        <RowDefinition Height="*"/>          <!-- 2: main content -->
+        <RowDefinition Height="Auto"/>       <!-- 3: status bar -->
+      </Grid.RowDefinitions>
+
+      <!-- ══════════════════════════════════════════════════
+           ROW 0: Custom title bar / drag strip
+           ══════════════════════════════════════════════════ -->
+      <Border Grid.Row="0" Background="#05051A" CornerRadius="8,8,0,0" Height="32"
+              MouseLeftButtonDown="TitleBar_MouseDown">
+        <Grid>
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                      HorizontalAlignment="Left" Margin="8,0">
+            <Image Source="Assets/wraith.png" Width="18" Height="18"
+                   VerticalAlignment="Center" Margin="0,0,6,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="WRAITH  ·  Windows Runtime Analysis &amp; Intrusion Threat Hunter"
+                       VerticalAlignment="Center"
+                       FontSize="11" FontWeight="SemiBold"
+                       Foreground="{StaticResource BrGoldDim}"/>
+          </StackPanel>
+          <!-- Window controls -->
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,4,0">
+            <Button Content="─" Width="28" Height="24" FontSize="14" FontWeight="Bold"
+                    Background="Transparent" BorderThickness="0"
+                    Foreground="{StaticResource BrPatronusSilver}"
+                    Click="BtnMinimize_Click" Cursor="Hand"
+                    ToolTip="Minimise"/>
+            <Button Content="□" Width="28" Height="24" FontSize="12"
+                    Background="Transparent" BorderThickness="0"
+                    Foreground="{StaticResource BrPatronusSilver}"
+                    Click="BtnMaximize_Click" Cursor="Hand"
+                    ToolTip="Maximise / Restore"/>
+            <Button Content="✕" Width="28" Height="24" FontSize="13" FontWeight="Bold"
+                    Background="Transparent" BorderThickness="0"
+                    Foreground="{StaticResource BrCritical}"
+                    Click="BtnClose_Click" Cursor="Hand"
+                    ToolTip="Close"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ══════════════════════════════════════════════════
+           ROW 1: Header — Patronus spell canvas + title
+           ══════════════════════════════════════════════════ -->
+      <Border Grid.Row="1" Background="{StaticResource BrHeaderBackground}" ClipToBounds="True">
+        <!-- Animated Patronus rings — controlled from code-behind -->
+        <Canvas x:Name="PatronusCanvas" ClipToBounds="True">
+
+          <!-- Static star field -->
+          <Ellipse Canvas.Left="80"  Canvas.Top="30"  Width="2" Height="2" Fill="#40C8D8E8"/>
+          <Ellipse Canvas.Left="200" Canvas.Top="15"  Width="1" Height="1" Fill="#30C8D8E8"/>
+          <Ellipse Canvas.Left="350" Canvas.Top="50"  Width="2" Height="2" Fill="#40C8D8E8"/>
+          <Ellipse Canvas.Left="500" Canvas.Top="20"  Width="1" Height="1" Fill="#30D4AF37"/>
+          <Ellipse Canvas.Left="650" Canvas.Top="60"  Width="2" Height="2" Fill="#40C8D8E8"/>
+          <Ellipse Canvas.Left="800" Canvas.Top="10"  Width="1" Height="1" Fill="#30C8D8E8"/>
+          <Ellipse Canvas.Left="950" Canvas.Top="45"  Width="2" Height="2" Fill="#40D4AF37"/>
+          <Ellipse Canvas.Left="1100" Canvas.Top="30"  Width="1" Height="1" Fill="#30C8D8E8"/>
+          <Ellipse Canvas.Left="130" Canvas.Top="90"  Width="1" Height="1" Fill="#20C8D8E8"/>
+          <Ellipse Canvas.Left="420" Canvas.Top="110" Width="2" Height="2" Fill="#30C8D8E8"/>
+          <Ellipse Canvas.Left="730" Canvas.Top="100" Width="1" Height="1" Fill="#20D4AF37"/>
+          <Ellipse Canvas.Left="1050" Canvas.Top="85"  Width="2" Height="2" Fill="#40C8D8E8"/>
+
+          <!-- Spell rings (animated in code-behind during scan) -->
+          <Ellipse x:Name="Ring1" Width="0" Height="0"
+                   StrokeThickness="1.5"
+                   Stroke="#40A8C8E8"
+                   RenderTransformOrigin="0.5,0.5"/>
+          <Ellipse x:Name="Ring2" Width="0" Height="0"
+                   StrokeThickness="1"
+                   Stroke="#30D4AF37"
+                   RenderTransformOrigin="0.5,0.5"/>
+          <Ellipse x:Name="Ring3" Width="0" Height="0"
+                   StrokeThickness="0.8"
+                   Stroke="#25A8C8E8"
+                   RenderTransformOrigin="0.5,0.5"/>
+
+          <!-- Title block -->
+          <StackPanel Canvas.Left="40" Canvas.Top="28" IsHitTestVisible="False">
+            <TextBlock Text="W R A I T H" Style="{StaticResource TitleLabel}" FontSize="46"/>
+            <TextBlock Text="&quot;Expecto Patronum&quot;  ·  Windows Threat Hunting Engine"
+                       Style="{StaticResource SubtitleLabel}" Margin="4,2,0,0"/>
+          </StackPanel>
+
+          <!-- Threat level badge — top right -->
+          <Border x:Name="ThreatBadge"
+                  Canvas.Right="0" Canvas.Top="35"
+                  Width="180" Height="60"
+                  CornerRadius="6"
+                  Background="#16102C"
+                  BorderThickness="1"
+                  BorderBrush="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}">
+            <Border.Effect>
+              <DropShadowEffect Color="#7B3FE4" BlurRadius="12" ShadowDepth="0" Opacity="0.5"/>
+            </Border.Effect>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+              <TextBlock Text="THREAT LEVEL" Foreground="{StaticResource BrGoldDim}"
+                         FontSize="9" FontWeight="Bold" HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding ThreatLevel}"
+                         FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"
+                         Foreground="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}">
+                <TextBlock.Effect>
+                  <DropShadowEffect Color="#000000" BlurRadius="0" ShadowDepth="0"/>
+                </TextBlock.Effect>
+              </TextBlock>
+            </StackPanel>
+          </Border>
+
+          <!-- Summary count badges — top right below threat -->
+          <StackPanel Canvas.Right="0" Canvas.Top="105"
+                      Orientation="Horizontal" IsHitTestVisible="False">
+            <Border Style="{StaticResource SummaryBlock}" Background="#33FF2D55">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding CritCount}" FontSize="18" FontWeight="Bold"
+                           Foreground="#FF2D55" HorizontalAlignment="Center"/>
+                <TextBlock Text="CRITICAL" FontSize="8" FontWeight="Bold"
+                           Foreground="#FF2D55" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryBlock}" Background="#33FF6B35">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding HighCount}" FontSize="18" FontWeight="Bold"
+                           Foreground="#FF6B35" HorizontalAlignment="Center"/>
+                <TextBlock Text="HIGH" FontSize="8" FontWeight="Bold"
+                           Foreground="#FF6B35" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryBlock}" Background="#33FFD700">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding MedCount}" FontSize="18" FontWeight="Bold"
+                           Foreground="#FFD700" HorizontalAlignment="Center"/>
+                <TextBlock Text="MEDIUM" FontSize="8" FontWeight="Bold"
+                           Foreground="#FFD700" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SummaryBlock}" Background="#334FC3F7" Margin="4,0,12,0">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="{Binding LowCount}" FontSize="18" FontWeight="Bold"
+                           Foreground="#4FC3F7" HorizontalAlignment="Center"/>
+                <TextBlock Text="LOW" FontSize="8" FontWeight="Bold"
+                           Foreground="#4FC3F7" HorizontalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+        </Canvas>
+      </Border>
+
+      <!-- ══════════════════════════════════════════════════
+           ROW 2: Main content area
+           ══════════════════════════════════════════════════ -->
+      <Grid Grid.Row="2" Margin="8,6,8,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="230"/>           <!-- left: controls -->
+          <ColumnDefinition Width="6"/>             <!-- splitter -->
+          <ColumnDefinition Width="*"/>             <!-- right: findings + log -->
+        </Grid.ColumnDefinitions>
+
+        <!-- ── LEFT: Scan Controls ─────────────────────── -->
+        <Border Grid.Column="0" Style="{StaticResource SpellPanel}" VerticalAlignment="Stretch">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+
+              <!-- Scan target -->
+              <TextBlock Text="SCAN TARGET" Style="{StaticResource GoldLabel}" Margin="0,0,0,4"/>
+              <TextBox x:Name="TxtScanPath" Text="{Binding ScanPath, UpdateSourceTrigger=PropertyChanged}"
+                       Margin="0,0,0,2" ToolTip="Root path to scan (use C:\ for full scan)"/>
+              <Button Content="Browse…" Style="{StaticResource GhostButton}" Margin="0,2,0,8"
+                      Click="BtnBrowse_Click"/>
+
+              <Separator/>
+
+              <!-- Event log hours -->
+              <TextBlock Text="EVENT LOG LOOK-BACK" Style="{StaticResource GoldLabel}" Margin="0,6,0,4"/>
+              <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <Slider x:Name="SldrHours" Grid.Column="0" Minimum="1" Maximum="720"
+                        Value="{Binding EventHours}" VerticalAlignment="Center"
+                        Foreground="{StaticResource BrPatronusGlow}"/>
+                <TextBlock Grid.Column="1" Margin="6,0,0,0" VerticalAlignment="Center"
+                           Foreground="{StaticResource BrPatronusSilver}">
+                  <Run Text="{Binding EventHours}"/><Run Text="h"/>
+                </TextBlock>
+              </Grid>
+
+              <Separator/>
+
+              <!-- Scan mode -->
+              <TextBlock Text="SCAN MODE" Style="{StaticResource GoldLabel}" Margin="0,6,0,6"/>
+              <RadioButton x:Name="RbFull" Content="Full Scan (all modules)"
+                           IsChecked="{Binding FullScan}" Foreground="{StaticResource BrPatronusSilver}"
+                           Margin="0,0,0,4"/>
+              <RadioButton Content="Quick Persistence Only"
+                           IsChecked="{Binding FullScan, Converter={StaticResource InvBoolVis}}"
+                           Foreground="{StaticResource BrPatronusSilver}"/>
+
+              <Separator Margin="0,8"/>
+
+              <!-- Main action buttons -->
+              <Button Content="EXPECTO PATRONUM" Style="{StaticResource SpellButton}"
+                      Command="{Binding StartScanCommand}"
+                      Margin="0,0,0,6" FontSize="13"
+                      ToolTip="Run full threat scan — requires Python + YARA"/>
+              <Button Content="Finite Incantatem" Style="{StaticResource DangerButton}"
+                      Command="{Binding StopScanCommand}"
+                      Margin="0,0,0,6" FontSize="12"
+                      ToolTip="Stop the current scan"/>
+              <Button Content="Obliviate (Clear)" Style="{StaticResource GhostButton}"
+                      Command="{Binding ClearCommand}"
+                      Margin="0,0,0,12"
+                      ToolTip="Clear all findings"/>
+
+              <Separator/>
+
+              <!-- Export -->
+              <TextBlock Text="EXPORT REPORT" Style="{StaticResource GoldLabel}" Margin="0,8,0,6"/>
+              <Button Content="↓ HTML Report"  Style="{StaticResource GhostButton}"
+                      Command="{Binding ExportHtmlCommand}" Margin="0,0,0,4"/>
+              <Button Content="↓ CSV Export"   Style="{StaticResource GhostButton}"
+                      Command="{Binding ExportCsvCommand}"  Margin="0,0,0,4"/>
+              <Button Content="↓ JSON Export"  Style="{StaticResource GhostButton}"
+                      Command="{Binding ExportJsonCommand}"/>
+
+              <Separator Margin="0,12"/>
+
+              <!-- Module legend -->
+              <TextBlock Text="MODULES" Style="{StaticResource GoldLabel}" Margin="0,0,0,6"/>
+              <ItemsControl FontSize="11">
+                <ItemsControl.Items>
+                  <TextBlock Foreground="#7ABFAA">Persistence / Autoruns</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">YARA rule matching</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Heuristic entropy scan</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Windows Event Viewer</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">npm supply-chain (cline)</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Live process analysis</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Network / C2 detection</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Windows security config</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Rootkit / driver checks</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Alternate data streams</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Browser integrity</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Defender integration</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Credential audit</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">CISA KEV live lookup</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">Native C fast-scan</TextBlock>
+                </ItemsControl.Items>
+              </ItemsControl>
+
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
+
+        <!-- ── SPLITTER ────────────────────────────────── -->
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                      Background="#1A0D3D" ShowsPreview="True"/>
+
+        <!-- ── RIGHT: Findings + Log ──────────────────── -->
+        <Grid Grid.Column="2">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>     <!-- filter bar -->
+            <RowDefinition Height="*"/>        <!-- findings list -->
+            <RowDefinition Height="Auto"/>     <!-- action bar -->
+            <RowDefinition Height="6"/>        <!-- splitter -->
+            <RowDefinition Height="160"/>      <!-- log -->
+          </Grid.RowDefinitions>
+          <!-- Watermark: spans entire right panel, floats above content -->
+          <Image Source="Assets/wraith.png"
+                 Grid.Row="0" Grid.RowSpan="5"
+                 Opacity="0.06"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center"
+                 Stretch="Uniform"
+                 MaxWidth="620" MaxHeight="620"
+                 IsHitTestVisible="False"
+                 Panel.ZIndex="999"
+                 RenderOptions.BitmapScalingMode="HighQuality"/>
+
+          <!-- Filter bar -->
+          <Border Grid.Row="0" Style="{StaticResource SpellPanel}" Margin="0,0,0,6" Padding="8,6">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+
+              <TextBox Grid.Column="0" x:Name="TxtSearch"
+                       Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                       Margin="0,0,8,0">
+                <TextBox.Style>
+                  <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                    <Style.Triggers>
+                      <Trigger Property="Text" Value="">
+                        <Setter Property="Background">
+                          <Setter.Value>
+                            <VisualBrush Stretch="None" AlignmentX="Left">
+                              <VisualBrush.Visual>
+                                <TextBlock Text="Search title / path / reason..."
+                                           Foreground="#40ADB5BE" Margin="6,0"/>
+                              </VisualBrush.Visual>
+                            </VisualBrush>
+                          </Setter.Value>
+                        </Setter>
+                      </Trigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBox.Style>
+              </TextBox>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="Severity:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                <ComboBox Width="90"
+                          ItemsSource="{Binding SeverityOptions}"
+                          SelectedItem="{Binding SeverityFilter}"/>
+              </StackPanel>
+
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="Category:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                <ComboBox Width="110"
+                          ItemsSource="{Binding CategoryOptions}"
+                          SelectedItem="{Binding CategoryFilter}"/>
+              </StackPanel>
+
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
+                <TextBlock Text="Live:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                <ComboBox Width="70"
+                          ItemsSource="{Binding LiveFilterOptions}"
+                          SelectedItem="{Binding LiveFilter}"/>
+              </StackPanel>
+
+              <Border Grid.Column="4" Background="#1A1A40" CornerRadius="4" Padding="8,3"
+                      VerticalAlignment="Center">
+                <TextBlock FontSize="12" FontWeight="SemiBold">
+                  <Run Text="{Binding FilteredFindings.Count, Mode=OneWay}" Foreground="{StaticResource BrPatronusCore}"/>
+                  <Run Text=" / " Foreground="{StaticResource BrGoldDim}"/>
+                  <Run Text="{Binding TotalCount, Mode=OneWay}" Foreground="{StaticResource BrPatronusSilver}"/>
+                  <Run Text=" findings" Foreground="{StaticResource BrGoldDim}"/>
+                </TextBlock>
+              </Border>
+            </Grid>
+          </Border>
+
+          <!-- Findings ListView -->
+          <Border Grid.Row="1" Style="{StaticResource SpellPanel}" Padding="0">
+            <ListView x:Name="LvFindings"
+                      ItemsSource="{Binding FilteredFindings}"
+                      SelectedItem="{Binding SelectedFinding}"
+                      Tag="{Binding KillProcessCommand}"
+                      SelectionMode="Single"
+                      GridViewColumnHeader.Click="LvFindings_ColumnHeaderClick">
+              <ListView.View>
+                <GridView>
+                  <GridViewColumn Width="82">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Severity" Content="SEVERITY"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <Border CornerRadius="3" Padding="4,1"
+                                Background="{Binding Severity, Converter={StaticResource SevBrush}}"
+                                HorizontalAlignment="Center">
+                          <TextBlock Text="{Binding SeverityLabel}" FontSize="10" FontWeight="Bold"
+                                     Foreground="{Binding Severity, Converter={StaticResource SevFg}}"
+                                     HorizontalAlignment="Center"/>
+                        </Border>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="100"
+                                  DisplayMemberBinding="{Binding Category}">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Category" Content="CATEGORY"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="220">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Title" Content="TITLE"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource BrPatronusCore}"
+                                   ToolTip="{Binding Title}"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="260">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Path" Content="PATH / PACKAGE"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource BrGoldDim}" FontSize="11"
+                                   FontFamily="Consolas" ToolTip="{Binding Path}"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="320">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Reason" Content="REASON"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Reason}" TextTrimming="CharacterEllipsis"
+                                   FontSize="11" ToolTip="{Binding Reason}"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="100"
+                                  DisplayMemberBinding="{Binding RuleName}">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="RuleName" Content="RULE"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="50">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Pid" Content="PID"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Pid}" FontFamily="Consolas" FontSize="11"
+                                   Foreground="{StaticResource BrGoldDim}"
+                                   Visibility="{Binding Pid, Converter={StaticResource NullVis}}"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <!-- LIVE status badge — sortable via column header click -->
+                  <GridViewColumn Width="68">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="LiveSortKey" Content="LIVE"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <Border CornerRadius="3" Padding="4,1"
+                                Background="{Binding ProcessStatus, Converter={StaticResource ProcStatusBrush}}"
+                                HorizontalAlignment="Center"
+                                Visibility="{Binding ProcessStatus, Converter={StaticResource EmptyCollapsed}}">
+                          <TextBlock Text="{Binding ProcessStatus}" FontSize="10" FontWeight="Bold"
+                                     Foreground="{Binding ProcessStatus, Converter={StaticResource ProcStatusFg}}"
+                                     HorizontalAlignment="Center"/>
+                        </Border>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <!-- LAST RUN — shown only for non-live findings that have a timestamp -->
+                  <GridViewColumn Width="126">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="LastRunTime" Content="LAST RUN"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding LastRunLabel}"
+                                   FontFamily="Consolas" FontSize="10"
+                                   Foreground="#B8A040"
+                                   ToolTip="{Binding LastRunLabel}"
+                                   Visibility="{Binding LastRunLabel, Converter={StaticResource EmptyCollapsed}}"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <!-- KILL button — visible only when process is live -->
+                  <GridViewColumn Header="" Width="60">
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <Button Content="KILL"
+                                FontSize="9" FontWeight="Bold"
+                                Padding="4,2"
+                                Foreground="#FF2D55"
+                                Background="#22FF2D55"
+                                BorderBrush="#FF2D55"
+                                BorderThickness="1"
+                                Cursor="Hand"
+                                Visibility="{Binding IsLive, Converter={StaticResource IsLiveVis}}"
+                                Command="{Binding DataContext.KillProcessCommand,
+                                                  RelativeSource={RelativeSource AncestorType={x:Type ListView}}}"
+                                CommandParameter="{Binding}"
+                                ToolTip="Kill this live process"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="66">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="Entropy" Content="ENTROPY"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock FontFamily="Consolas" FontSize="11"
+                                   Foreground="{StaticResource BrCritical}"
+                                   Visibility="{Binding Entropy, Converter={StaticResource NullVis}}">
+                          <Run Text="{Binding Entropy, StringFormat=F3}"/>
+                        </TextBlock>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                  <GridViewColumn Width="78">
+                    <GridViewColumn.Header>
+                      <GridViewColumnHeader Tag="AnomalyScore" Content="ANOMALY"
+                                            Foreground="{StaticResource BrGoldDim}"
+                                            FontSize="11" FontWeight="Bold"/>
+                    </GridViewColumn.Header>
+                    <GridViewColumn.CellTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding AnomalyLabel}"
+                                   FontFamily="Consolas" FontSize="11"
+                                   Foreground="#FF6B35"/>
+                      </DataTemplate>
+                    </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+
+                </GridView>
+              </ListView.View>
+
+              <!-- Row style: tint by severity + context menu -->
+              <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                  <Setter Property="Background" Value="{Binding Severity, Converter={StaticResource SevRowBg}}"/>
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                  <Setter Property="Padding" Value="2,4"/>
+                  <!-- Pass ViewModel down through Tag so ContextMenu can reach all commands -->
+                  <Setter Property="Tag"
+                          Value="{Binding DataContext,
+                                         RelativeSource={RelativeSource AncestorType={x:Type ListView}}}"/>
+                  <Setter Property="ContextMenu">
+                    <Setter.Value>
+                      <ContextMenu>
+                        <MenuItem Header="Kill Process"
+                                  FontWeight="SemiBold"
+                                  Foreground="#FF2D55"
+                                  Command="{Binding PlacementTarget.Tag.KillProcessCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"
+                                  IsEnabled="{Binding IsLive}"/>
+                        <MenuItem Header="Inspect Selection"
+                                  Command="{Binding PlacementTarget.Tag.InspectFindingCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"/>
+                        <MenuItem Header="Trace Caller / Launcher"
+                                  Command="{Binding PlacementTarget.Tag.TraceOriginCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"/>
+                        <Separator/>
+                        <MenuItem Header="Copy Title"
+                                  Command="{Binding PlacementTarget.Tag.CopyTitleCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        <MenuItem Header="Copy Path"
+                                  Command="{Binding PlacementTarget.Tag.CopyPathCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        <MenuItem Header="Copy Command Line"
+                                  Command="{Binding PlacementTarget.Tag.CopyCommandLineCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        <MenuItem Header="Open Path in Explorer"
+                                  Command="{Binding PlacementTarget.Tag.OpenPathCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                      </ContextMenu>
+                    </Setter.Value>
+                  </Setter>
+                </Style>
+              </ListView.ItemContainerStyle>
+            </ListView>
+          </Border>
+
+          <!-- Action bar: shown whenever a finding is selected -->
+          <Border Grid.Row="2"
+                  Background="#1A0A22"
+                  BorderBrush="#FF2D55"
+                  BorderThickness="0,1,0,1"
+                  Padding="10,6"
+                  Visibility="{Binding SelectedFinding, Converter={StaticResource NullVis}}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,4">
+                <!-- PID badge — only shown when finding has a PID -->
+                <TextBlock Text="PID" Foreground="{StaticResource BrGoldDim}" FontSize="10"
+                           FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,4,0"
+                           Visibility="{Binding SelectedFinding.Pid, Converter={StaticResource NullVis}}"/>
+                <TextBlock Text="{Binding SelectedFinding.Pid}" Foreground="#FF2D55"
+                           FontFamily="Consolas" FontSize="13" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="0,0,14,0"
+                           Visibility="{Binding SelectedFinding.Pid, Converter={StaticResource NullVis}}"/>
+                <!-- No-PID label -->
+                <TextBlock Text="No live process" Foreground="#664466" FontSize="10"
+                           VerticalAlignment="Center" Margin="0,0,14,0" FontStyle="Italic"
+                           Visibility="{Binding CanKillProcess, Converter={StaticResource InvBoolVis}}"/>
+                <TextBlock Text="{Binding SelectedFinding.Title}" Foreground="{StaticResource BrPatronusSilver}"
+                           FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           MaxWidth="480"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding SelectedFinding.Path}"
+                     Foreground="{StaticResource BrGoldDim}"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     MaxHeight="36"
+                     ToolTip="{Binding SelectedFinding.Path}"/>
+
+                <TextBlock Text="{Binding SelectedFinding.CommandLine}"
+                     Foreground="#7ABFAA"
+                     FontFamily="Consolas"
+                     FontSize="10"
+                     TextWrapping="Wrap"
+                     MaxHeight="32"
+                     Margin="0,2,0,0"
+                     ToolTip="{Binding SelectedFinding.CommandLine}"
+                     Visibility="{Binding SelectedFinding.CommandLine, Converter={StaticResource EmptyCollapsed}}"/>
+              </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="REFRESH"
+                  Style="{StaticResource GhostButton}"
+                  Command="{Binding RefreshStatusCommand}"
+                  Margin="0,0,8,0"
+                  FontSize="11" FontWeight="SemiBold" Padding="10,4"/>
+                <Button Content="INSPECT"
+                  Style="{StaticResource GhostButton}"
+                  Command="{Binding InspectFindingCommand}"
+                  CommandParameter="{Binding SelectedFinding}"
+                  Margin="0,0,8,0"
+                  FontSize="11" FontWeight="SemiBold" Padding="10,4"/>
+                <Button Content="TRACE CALLER"
+                  Style="{StaticResource GhostButton}"
+                  Command="{Binding TraceOriginCommand}"
+                  CommandParameter="{Binding SelectedFinding}"
+                  Margin="0,0,8,0"
+                  FontSize="11" FontWeight="SemiBold" Padding="10,4"/>
+                <Button Content="OPEN PATH"
+                  Style="{StaticResource GhostButton}"
+                  Command="{Binding OpenPathCommand}"
+                  Margin="0,0,8,0"
+                  FontSize="11" FontWeight="SemiBold" Padding="10,4"/>
+                <Button Grid.Column="1"
+                  Content="KILL PROCESS"
+                  Style="{StaticResource DangerButton}"
+                  Command="{Binding KillProcessCommand}"
+                  IsEnabled="{Binding CanKillProcess}"
+                  ToolTip="Only enabled when the selected PID is currently LIVE"
+                  FontSize="12" FontWeight="Bold" Padding="14,4"/>
+                    </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- Row splitter -->
+          <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
+                        Background="#1A0D3D" ShowsPreview="True"/>
+
+          <!-- Log output -->
+          <Border Grid.Row="4" Style="{StaticResource SpellPanel}" Padding="0">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <Border Grid.Row="0" Background="#0A0A20" Padding="8,4">
+                <TextBlock Style="{StaticResource GoldLabel}">
+                  SCAN LOG  —  <Run Foreground="{StaticResource BrPatronusSilver}"
+                                    Text="{Binding CurrentPhase}"/>
+                </TextBlock>
+              </Border>
+              <Grid Grid.Row="1">
+                <TextBox Style="{StaticResource LogBox}"
+                         x:Name="TxtLog"
+                         Text="{Binding LogOutput, Mode=OneWay}"
+                         TextChanged="TxtLog_TextChanged"
+                         Background="Transparent"/>
+              </Grid>
+            </Grid>
+          </Border>
+
+        </Grid>
+      </Grid>
+
+      <!-- ══════════════════════════════════════════════════
+           ROW 3: Status bar
+           ══════════════════════════════════════════════════ -->
+      <Border Grid.Row="3" Background="#05051A" CornerRadius="0,0,8,8" Padding="12,4" Margin="0,6,0,0">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+
+          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Spinner during scan -->
+            <Border x:Name="SpinnerDot" Width="8" Height="8" CornerRadius="4"
+                    Margin="0,0,8,0" VerticalAlignment="Center">
+              <Border.Background>
+                <SolidColorBrush x:Name="SpinnerBrush" Color="#3D3D5A"/>
+              </Border.Background>
+            </Border>
+            <TextBlock VerticalAlignment="Center" FontSize="12">
+              <Run Text="{Binding CurrentPhase}" Foreground="{StaticResource BrPatronusSilver}"/>
+            </TextBlock>
+          </StackPanel>
+
+          <!-- Progress bar -->
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+            <ProgressBar Width="200" Height="6" Margin="0,0,12,0"
+                         Value="{Binding ScanProgress}"
+                         Visibility="{Binding IsScanning, Converter={StaticResource BoolVis}}"/>
+            <TextBlock Text="WRAITH v1.0  ·  Running as Administrator"
+                       Foreground="{StaticResource BrGoldDim}" FontSize="10"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ══════════════════════════════════════════════════
+           WOOSH OVERLAY: Scan-launch purge rush (full-window, one-shot, code-behind driven)
+           ══════════════════════════════════════════════════ -->
+      <Canvas x:Name="WooshCanvas"
+              Grid.RowSpan="4"
+              IsHitTestVisible="False"
+              Visibility="Collapsed"
+              ClipToBounds="True"/>
+
+      <!-- ══════════════════════════════════════════════════
+           GHOST OVERLAY: Ambient wraith sweeps while scanning (looping, code-behind driven)
+           ══════════════════════════════════════════════════ -->
+      <Canvas x:Name="GhostCanvas"
+              Grid.RowSpan="4"
+              IsHitTestVisible="False"
+              Visibility="Collapsed"
+              ClipToBounds="True"/>
+
+    </Grid>
+  </Border>
+</Window>
