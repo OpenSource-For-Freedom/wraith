@@ -345,6 +345,8 @@ jobs:
             sbom-scanner.spdx.json
           generate_release_notes: true
           body: |
+            <p align="center"><img src="https://raw.githubusercontent.com/OpenSource-For-Freedom/wraith/main/WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/></p>
+
             ## WRAITH — Expecto Patronum · Windows Threat Hunter
 
             ### Install

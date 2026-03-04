@@ -274,7 +274,14 @@ $results | ConvertTo-Json -Depth 2
                         "severity": (
                             "CRITICAL"
                             if suspicious
-                            and kw in ("mimikatz", "sekurlsa", "meterpreter", "beacon", "shellcode")
+                            and kw
+                            in (
+                                "mimikatz",
+                                "sekurlsa",
+                                "meterpreter",
+                                "beacon",
+                                "shellcode",
+                            )
                             else info[1]
                         ),
                         "title": f"[ID:{ev_id}] {info[0]} - {ev.get('Provider','')}",
