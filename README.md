@@ -1,10 +1,47 @@
+<p align="center">
+  <img src="WRAITH/Assets/wraith.png" alt="WRAITH" width="480"/>
+</p>
+
 # W R A I T H
 **Windows Runtime Analysis & Intrusion Threat Hunter**  
 **With a Unix backbone and OpenSource data retrieval system**
 *"Expecto Patronum"*
 
+[![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows)](docs/windows10.md)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://python.org/downloads/)
+[![License](https://img.shields.io/github/license/OpenSource-For-Freedom/wraith)](LICENSE)
 
 A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
+
+---
+
+## Documentation
+
+| Guide | Description |
+|---|---|
+| [Windows 10 Setup](docs/windows10.md) | Win10 build compatibility, winget fallback, audit policy, known limitations |
+| [Scan Modules](#scan-modules) | What each of the 14 modules hunts |
+| [Usage](#usage) | GUI, headless, and scripted usage |
+| [Output](#output) | Report formats and severity tiers |
+
+### Library & Framework References
+
+| Library | Purpose | Docs |
+|---|---|---|
+| .NET 8 WPF | GUI framework | [docs.microsoft.com/wpf](https://docs.microsoft.com/en-us/dotnet/desktop/wpf/) |
+| YARA 4.x | Signature engine | [virustotal.github.io/yara](https://virustotal.github.io/yara/) |
+| yara-python | Python YARA bindings | [pypi: yara-python](https://pypi.org/project/yara-python/) |
+| pywin32 | Win32 API access | [pypi: pywin32](https://pypi.org/project/pywin32/) |
+| psutil | Process & network info | [psutil.readthedocs.io](https://psutil.readthedocs.io/) |
+| requests | CISA KEV API | [docs.python-requests.org](https://docs.python-requests.org/) |
+| python-magic | File entropy & MIME | [pypi: python-magic](https://pypi.org/project/python-magic/) |
+| CIM / WMI | Service & process enumeration | [Win32 Provider](https://docs.microsoft.com/en-us/windows/win32/cimwin32prov/win32-provider) |
+| Windows Event Log | Event parsing | [Get-WinEvent](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent) |
+| CISA KEV | Known Exploited Vulnerabilities | [cisa.gov/kev](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) |
+
+---
 
 
 ## UI Walkthrough
@@ -62,8 +99,8 @@ Select any finding tied to a running process, then hit **Kill Process** in the t
 
 | Dependency | Minimum | Notes |
 |---|---|---|
-| Windows | 10 / 11 | x64 |
-| .NET SDK | 8.0 | [Download](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| Windows | 10 21H1 / 11 | x64 — [Win10 guide](docs/windows10.md) |
+| .NET SDK | 8.0 | [Download](https://dotnet.microsoft.com/download/dotnet/8.0) — only needed to build from source |
 | Python | 3.10+ | [Download](https://python.org/downloads/) — check **Add to PATH** |
 | Administrator | Required | UAC prompt on launch |
 
