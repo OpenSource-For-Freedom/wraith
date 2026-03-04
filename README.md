@@ -20,7 +20,7 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
+A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis, all surfaced through a dark-themed WPF dashboard.
 
 </div>
 
