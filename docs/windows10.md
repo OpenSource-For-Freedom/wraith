@@ -20,8 +20,8 @@ Recommended minimum: **Windows 10 21H1 (build 19043)**.
 
 ## Installation
 
-### Option A — START.bat (easiest)
-Download the release ZIP, extract, and double-click `START.bat`. It will:
+### Option A — App Image icon (easiest)
+Download the release ZIP, extract, and double-click the WRAITH app image. It will:
 1. Detect Python — install via `winget` if missing (see note below)
 2. Create `.venv` and install all scanner dependencies
 3. Launch `WRAITH.exe` (runtime is bundled — no .NET SDK needed)
