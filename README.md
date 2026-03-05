@@ -12,7 +12,7 @@
 </pre>
 
 **Windows Runtime Analysis & Intrusion Threat Hunter**
-**With a** ![Unix](https://img.shields.io/badge/Unix-backbone-2ea44f) **and OpenSource data retrieval system** · *Expecto Patronum*
+**With a** ![Unix](https://img.shields.io/badge/Unix-backbone-2ea44f) **and OpenSource data retrieval system** 
 
 [![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows)](docs/windows10.md)
