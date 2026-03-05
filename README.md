@@ -130,6 +130,7 @@ LAUNCH.bat
 4. Create a desktop shortcut
 5. Launch WRAITH
 
+After this is built, youll have the WRAITH app icon on your desktoo for further use as a native application. 
 ---
 
 ## Scan Modules
