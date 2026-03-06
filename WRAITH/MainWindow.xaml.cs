@@ -88,6 +88,11 @@ public partial class MainWindow : Window
     {
         // Pulse the status dot once
         PulseSpinnerDot();
+
+        // Kick off first-run dependency check / install in the background.
+        // Progress and errors are streamed to the log panel automatically.
+        if (DataContext is MainViewModel vm)
+            _ = vm.InitializeAsync();
     }
 
     // ── Custom chrome ──────────────────────────────────────────────────
@@ -987,22 +992,59 @@ public partial class MainWindow : Window
         {
             double ex = ltr ? eyeNX * scale : (110.0 - eyeNX) * scale;
             double ey = 22.0 * scale;
-            double er = 2.8 * scale;
+            double er = 6.2 * scale;   // much larger
+
+            // ── Outer iris — blood-red radial glow ──
             var ef = new RadialGradientBrush();
-            ef.GradientStops.Add(new GradientStop(Colors.White,                                          0.00));
-            ef.GradientStops.Add(new GradientStop(Color.FromArgb(215, gc.R, gc.G, gc.B), 0.45));
-            ef.GradientStops.Add(new GradientStop(Color.FromArgb(  0, gc.R, gc.G, gc.B), 1.00));
+            ef.GradientStops.Add(new GradientStop(Color.FromArgb(255, 255, 40,  20), 0.00));  // hot red core
+            ef.GradientStops.Add(new GradientStop(Color.FromArgb(200, 180,  0,   0), 0.40));  // deep crimson
+            ef.GradientStops.Add(new GradientStop(Color.FromArgb(  0,  80,  0,   0), 1.00));  // fade out
             var eye = new Ellipse
             {
-                Width = er * 2, Height = er * 1.3, Fill = ef,
-                Effect = new DropShadowEffect { Color = Colors.White, BlurRadius = 6 * scale, ShadowDepth = 0, Opacity = 0.9 }
+                Width  = er * 2,
+                Height = er * 2.2,   // taller than wide — menacing vertical oval
+                Fill   = ef,
+                Effect = new DropShadowEffect
+                {
+                    Color       = Color.FromArgb(255, 255, 30, 0),
+                    BlurRadius  = 18 * scale,
+                    ShadowDepth = 0,
+                    Opacity     = 1.0
+                }
             };
-            Canvas.SetLeft(eye, ex - er); Canvas.SetTop(eye, ey - er * 0.65);
-            eye.BeginAnimation(OpacityProperty,
-                new DoubleAnimation(0.5, 1.0, new Duration(TimeSpan.FromSeconds(_headerRng.NextDouble() * 0.3 + 0.3)))
-                { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
-                  BeginTime = TimeSpan.FromSeconds(_headerRng.NextDouble() * 0.3) });
+            Canvas.SetLeft(eye, ex - er);
+            Canvas.SetTop(eye,  ey - er * 1.1);
+
+            // ── Vertical slit pupil on top ──
+            double pr = er * 0.28;
+            var slitBrush = new SolidColorBrush(Color.FromArgb(230, 5, 0, 0));
+            var slit = new Ellipse
+            {
+                Width  = pr * 2,
+                Height = er * 1.8,      // tall thin slit
+                Fill   = slitBrush
+            };
+            Canvas.SetLeft(slit, ex - pr);
+            Canvas.SetTop(slit,  ey - er * 0.9);
+
+            // ── Blink: long stare, then snap shut ──
+            var blinkAnim = new DoubleAnimationUsingKeyFrames
+            {
+                Duration       = new Duration(TimeSpan.FromSeconds(3.5 + _headerRng.NextDouble() * 2.0)),
+                RepeatBehavior = RepeatBehavior.Forever,
+                BeginTime      = TimeSpan.FromSeconds(_headerRng.NextDouble() * 1.5)
+            };
+            blinkAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(0.00)));  // staring open
+            blinkAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(0.82)));  // still staring
+            blinkAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0.0, KeyTime.FromPercent(0.88)));  // snap shut
+            blinkAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0.0, KeyTime.FromPercent(0.91)));  // hold closed
+            blinkAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1.0, KeyTime.FromPercent(0.96)));  // snap back open
+
+            eye.BeginAnimation(OpacityProperty, blinkAnim);
+            slit.BeginAnimation(OpacityProperty, blinkAnim);
+
             container.Children.Add(eye);
+            container.Children.Add(slit);
         }
 
         Canvas.SetLeft(container, startX);

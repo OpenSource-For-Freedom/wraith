@@ -166,6 +166,12 @@ def analyze_process(proc: Dict, conn_map: Dict[int, List[str]]) -> List[Dict]:
     if name in TRUSTED_PROCESSES:
         return []
 
+    # Skip WRAITH itself — the .NET single-file publish extracts to
+    # %TEMP%\.net\WRAITH\<hash>\ so without this the scanner flags its own
+    # host process as "running from suspicious location".
+    if name in ("wraith.exe", "wraith") and r"\.net\wraith" in path.replace("/", "\\"):
+        return []
+
     # Suspicious process name
     for sus in SUSPICIOUS_NAMES:
         if sus in name:

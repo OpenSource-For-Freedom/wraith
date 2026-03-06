@@ -27,7 +27,11 @@
   <ItemGroup>
     <Resource Include="Assets\wraith.png" />
     <Resource Include="Assets\wraith.gif" />
-    <None Include="Assets\wraith.ico" />
+    <!-- Listed as Content (not None) so the .ico is available during the publish  -->
+    <!-- Win32 PE icon embedding pass; ApplicationIcon above sets the actual icon. -->
+    <Content Include="Assets\wraith.ico">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

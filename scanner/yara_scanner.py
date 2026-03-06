@@ -226,8 +226,16 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
         nonlocal files_scanned, errors
         if not base.exists():
             return
+        # Never scan WRAITH's own .NET single-file extraction folder — it is
+        # a guaranteed false-positive source and contains only WRAITH itself.
+        _self_prefix = os.path.join(
+            os.environ.get("TEMP", ""), ".net", "wraith"
+        ).lower()
         for root, dirs, files in os.walk(str(base)):
-            # Skip WinSxS etc
+            # Skip WinSxS etc and WRAITH's own extraction dir
+            if root.lower().startswith(_self_prefix):
+                dirs.clear()
+                continue
             dirs[:] = [
                 d
                 for d in dirs

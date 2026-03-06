@@ -162,6 +162,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _threatLevel = value; OnPropertyChanged(); }
     }
 
+    private string _osDescription = "Detecting...";
+    public string OsDescription
+    {
+        get => _osDescription;
+        set { _osDescription = value; OnPropertyChanged(); }
+    }
+
     public double ScanProgress
     {
         get => _scanProgress;
@@ -278,6 +285,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
             { Interval = TimeSpan.FromMilliseconds(150) };
         _flushTimer.Tick += (_, _) => FlushPendingBatch();
         _flushTimer.Start();
+    }
+
+    // ── First-run dependency bootstrap ───────────────────────────────
+    /// <summary>
+    /// Called once from MainWindow.OnLoaded.  Runs silently in the background and
+    /// writes wraith.env.json so that ScanOrchestrator finds Python automatically.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        var baseDir      = BootstrapService.ResolveBaseDir();
+        var bootstrapper = new BootstrapService();
+        bootstrapper.LogMessage += msg => AppendLog(msg);
+        bootstrapper.OsDetected  += os  => OsDescription = os;
+
+        CurrentPhase = "Checking environment...";
+        ThreatLevel  = "UNKNOWN";
+
+        var pythonPath = await bootstrapper.EnsureDependenciesAsync(baseDir);
+
+        if (pythonPath == null)
+        {
+            CurrentPhase = "Setup required — see log for instructions";
+            ThreatLevel  = "UNKNOWN";
+        }
+        else
+        {
+            CurrentPhase = "Awaiting your command...";
+        }
     }
 
     // ── Scan execution ────────────────────────────────────────────────

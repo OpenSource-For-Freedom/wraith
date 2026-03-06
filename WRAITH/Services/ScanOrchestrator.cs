@@ -36,7 +36,14 @@ public class ScanOrchestrator
 
     public ScanOrchestrator()
     {
-        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        // When published as PublishSingleFile=true the .NET runtime extracts the bundle to
+        // a temp directory; AppDomain.CurrentDomain.BaseDirectory returns that temp path, NOT
+        // the directory where WRAITH.exe lives.  Environment.ProcessPath is the real exe path.
+        var exePath = Environment.ProcessPath
+                      ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        var baseDir = exePath != null
+            ? (System.IO.Path.GetDirectoryName(exePath) ?? AppDomain.CurrentDomain.BaseDirectory)
+            : AppDomain.CurrentDomain.BaseDirectory;
         _scannerDir = FindDirectory(baseDir, "scanner") ?? System.IO.Path.Combine(baseDir, "scanner");
         _nativeDir  = FindDirectory(baseDir, "native")  ?? System.IO.Path.Combine(baseDir, "native");
         _pythonExe  = ResolveVenvPython(baseDir);

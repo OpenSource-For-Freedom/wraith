@@ -76,6 +76,14 @@ HEURISTIC_SCAN_PATHS = [
 ]
 
 SKIP_DIRS_LOWER = {"winsxs", "assembly", "microsoft.net", "installer", "$recycle.bin"}
+
+# .NET single-file publish extraction paths to never flag as suspicious.
+# When WRAITH.exe runs as a self-contained single file the runtime extracts
+# itself to %TEMP%\.net\WRAITH\<hash>\ — scanning that folder produces
+# false-positive process-injection / entropy findings against ourselves.
+_SELF_EXTRACT_PREFIX_LOWER = os.path.join(
+    os.environ.get("TEMP", ""), ".net", "wraith"
+).lower()
 SCAN_EXT = {
     ".exe",
     ".dll",
@@ -212,6 +220,10 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
         if not os.path.exists(base):
             return
         for root, dirs, files in os.walk(base):
+            # Skip WRAITH's own .NET single-file extraction folder entirely
+            if root.lower().startswith(_SELF_EXTRACT_PREFIX_LOWER):
+                dirs.clear()
+                continue
             dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS_LOWER]
             for fname in files:
                 fpath = os.path.join(root, fname)

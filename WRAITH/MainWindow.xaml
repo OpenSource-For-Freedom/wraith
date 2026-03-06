@@ -137,9 +137,30 @@
             </StackPanel>
           </StackPanel>
 
+          <!-- OS badge — top right -->
+          <Border Canvas.Right="0" Canvas.Top="8"
+                  Height="26" MinWidth="180"
+                  CornerRadius="4"
+                  Background="#10081E"
+                  BorderThickness="1"
+                  BorderBrush="#2A1A5A"
+                  IsHitTestVisible="False">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                        VerticalAlignment="Center" Margin="8,0">
+              <TextBlock Text="OS  "
+                         Foreground="{StaticResource BrGoldDim}"
+                         FontSize="8" FontWeight="Bold"
+                         VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding OsDescription}"
+                         Foreground="#88A8C8E8"
+                         FontSize="9" FontWeight="SemiBold"
+                         VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+
           <!-- Threat level badge — top right -->
           <Border x:Name="ThreatBadge"
-                  Canvas.Right="0" Canvas.Top="35"
+                  Canvas.Right="0" Canvas.Top="38"
                   Width="180" Height="60"
                   CornerRadius="6"
                   Background="#16102C"
