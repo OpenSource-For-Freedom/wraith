@@ -162,3 +162,40 @@ public class IsLiveToVisibilityConverter : IValueConverter
         val is true ? Visibility.Visible : Visibility.Collapsed;
     public object ConvertBack(object v, Type t, object p, CultureInfo c) => DependencyProperty.UnsetValue;
 }
+
+/// <summary>Maps a LogEntry.Tag string to the appropriate foreground brush for the log panel.</summary>
+public class LogTagToBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush BrError     = new(Color.FromRgb(0xFF, 0x2D, 0x55)); // red
+    private static readonly SolidColorBrush BrWarn      = new(Color.FromRgb(0xFF, 0x8C, 0x35)); // orange
+    private static readonly SolidColorBrush BrDone      = new(Color.FromRgb(0x69, 0xFF, 0x47)); // green
+    private static readonly SolidColorBrush BrKilled    = new(Color.FromRgb(0x00, 0xFF, 0xB2)); // teal
+    private static readonly SolidColorBrush BrCancelled = new(Color.FromRgb(0xFF, 0xD7, 0x00)); // yellow
+    private static readonly SolidColorBrush BrLive      = new(Color.FromRgb(0x4F, 0xC3, 0xF7)); // sky blue
+    private static readonly SolidColorBrush BrTrace     = new(Color.FromRgb(0x50, 0x44, 0x70)); // muted purple
+    private static readonly SolidColorBrush BrSep       = new(Color.FromRgb(0x3D, 0x2D, 0x60)); // very dim
+    private static readonly SolidColorBrush BrDefault   = new(Color.FromRgb(0xAA, 0x96, 0xCC)); // lavender
+
+    static LogTagToBrushConverter()
+    {
+        BrError.Freeze(); BrWarn.Freeze(); BrDone.Freeze(); BrKilled.Freeze();
+        BrCancelled.Freeze(); BrLive.Freeze(); BrTrace.Freeze(); BrSep.Freeze(); BrDefault.Freeze();
+    }
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        (value as string) switch
+        {
+            "ERROR"     => BrError,
+            "WARN"      => BrWarn,
+            "DONE"      => BrDone,
+            "KILLED"    => BrKilled,
+            "STOP"      => BrWarn,
+            "CANCELLED" => BrCancelled,
+            "LIVE"      => BrLive,
+            "TRACE"     => BrTrace,
+            "SEP"       => BrSep,
+            _           => BrDefault,
+        };
+
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => DependencyProperty.UnsetValue;
+}

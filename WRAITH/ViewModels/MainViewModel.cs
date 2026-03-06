@@ -73,6 +73,36 @@ public class AsyncRelayCommand<T> : ICommand
     }
 }
 
+/// <summary>Single line in the scan log with a colour tag derived from its [PREFIX].</summary>
+public sealed class LogEntry
+{
+    public string Text { get; }
+    public string Tag  { get; }   // "ERROR"|"WARN"|"DONE"|"KILLED"|"STOP"|"CANCELLED"|"TRACE"|"LIVE"|"INFO"|"SEP"|"" 
+    public LogEntry(string text, string tag = "") { Text = text; Tag = tag; }
+
+    private static readonly (string prefix, string tag)[] _rules =
+    [
+        ("[ERROR]",     "ERROR"),
+        ("[WARN]",      "WARN"),
+        ("[KILLED]",    "KILLED"),
+        ("[DONE]",      "DONE"),
+        ("[STOP]",      "STOP"),
+        ("[CANCELLED]", "CANCELLED"),
+        ("[TRACE]",     "TRACE"),
+        ("[LIVE]",      "LIVE"),
+        ("[PATH]",      "INFO"),
+        ("[INFO]",      "INFO"),
+    ];
+
+    public static LogEntry From(string msg)
+    {
+        foreach (var (prefix, tag) in _rules)
+            if (msg.Contains(prefix)) return new LogEntry(msg, tag);
+        if (msg.TrimStart().StartsWith("---")) return new LogEntry(msg, "SEP");
+        return new LogEntry(msg, "");
+    }
+}
+
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     // ── Fields ──────────────────────────────────────────────────────────
@@ -80,6 +110,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private CancellationTokenSource? _cts;
 
     private bool _isScanning;
+    private bool _isReady;
     private string _currentPhase = "Awaiting your command...";
     private string _scanPath = System.IO.Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
     private int _eventHours = 72;
@@ -100,8 +131,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly object _logLock = new();
     private readonly DispatcherTimer _flushTimer;
     // ── Observable collections ────────────────────────────────────────
-    public ObservableCollection<ThreatFinding> AllFindings    { get; } = new();
+    public ObservableCollection<ThreatFinding> AllFindings      { get; } = new();
     public ObservableCollection<ThreatFinding> FilteredFindings { get; } = new();
+    public ObservableCollection<LogEntry>      LogEntries       { get; } = new();
 
     // ── Summary counts ────────────────────────────────────────────────
     private int _critCount, _highCount, _medCount, _lowCount, _infoCount;
@@ -119,6 +151,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _isScanning = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotScanning)); }
     }
     public bool IsNotScanning => !_isScanning;
+
+    public bool IsReady
+    {
+        get => _isReady;
+        set { _isReady = value; OnPropertyChanged(); CommandManager.InvalidateRequerySuggested(); }
+    }
 
     public string CurrentPhase
     {
@@ -242,7 +280,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // ── Constructor ───────────────────────────────────────────────────
     public MainViewModel()
     {
-        StartScanCommand  = new AsyncRelayCommand(RunScanAsync,   () => !IsScanning);
+        StartScanCommand  = new AsyncRelayCommand(RunScanAsync,   () => !IsScanning && IsReady);
         StopScanCommand   = new RelayCommand(_ => StopScan(),     _ => IsScanning);
         ClearCommand      = new RelayCommand(_ => Clear(),        _ => !IsScanning);
         ExportHtmlCommand = new AsyncRelayCommand(ExportHtmlAsync, () => AllFindings.Count > 0 && !IsScanning);
@@ -313,6 +351,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             CurrentPhase = "Awaiting your command...";
         }
+        IsReady = true;
     }
 
     // ── Scan execution ────────────────────────────────────────────────
@@ -925,6 +964,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
     {
         AllFindings.Clear();
         FilteredFindings.Clear();
+        LogEntries.Clear();
         LogOutput  = "";
         ThreatLevel = "UNKNOWN";
         CurrentPhase = "Awaiting your command...";
@@ -953,7 +993,10 @@ $result | ConvertTo-Json -Depth 8 -Compress
             }
         }
         if (logs != null)
+        {
             LogOutput += string.Join(string.Empty, logs.Select(m => m + "\n"));
+            foreach (var m in logs) LogEntries.Add(LogEntry.From(m));
+        }
 
         // Flush findings — add directly, check filter incrementally
         if (_pendingFindings.IsEmpty) return;
@@ -1105,7 +1148,11 @@ $result | ConvertTo-Json -Depth 8 -Compress
     }
 
     // ── Logging ───────────────────────────────────────────────────────
-    private void AppendLog(string msg) => LogOutput += msg + "\n";
+    private void AppendLog(string msg)
+    {
+        LogOutput += msg + "\n";
+        LogEntries.Add(LogEntry.From(msg));
+    }
 
     // ── Export ───────────────────────────────────────────────────────
     private ScanResult BuildResult() => new()
@@ -1129,6 +1176,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
         if (path == null) return;
         await Task.Run(() => new ReportExporter().ExportHtml(BuildResult(), path));
         AppendLog($"[EXPORT] HTML saved: {path}");
+        RevealInExplorer(path);
     }
 
     private async Task ExportCsvAsync()
@@ -1137,6 +1185,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
         if (path == null) return;
         await Task.Run(() => new ReportExporter().ExportCsv(BuildResult(), path));
         AppendLog($"[EXPORT] CSV saved: {path}");
+        RevealInExplorer(path);
     }
 
     private async Task ExportJsonAsync()
@@ -1145,17 +1194,29 @@ $result | ConvertTo-Json -Depth 8 -Compress
         if (path == null) return;
         await Task.Run(() => new ReportExporter().ExportJson(BuildResult(), path));
         AppendLog($"[EXPORT] JSON saved: {path}");
+        RevealInExplorer(path);
     }
 
     private static string? GetSavePath(string ext)
     {
         var dlg = new Microsoft.Win32.SaveFileDialog
         {
-            FileName    = $"WRAITH_Report_{DateTime.Now:yyyyMMdd_HHmmss}",
-            DefaultExt  = $".{ext}",
-            Filter      = $"{ext.ToUpperInvariant()} files|*.{ext}|All files|*.*"
+            FileName         = $"WRAITH_Report_{DateTime.Now:yyyyMMdd_HHmmss}",
+            DefaultExt       = $".{ext}",
+            Filter           = $"{ext.ToUpperInvariant()} files|*.{ext}|All files|*.*",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+            AddExtension     = true
         };
         return dlg.ShowDialog() == true ? dlg.FileName : null;
+    }
+
+    private static void RevealInExplorer(string filePath)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{filePath}\"");
+        }
+        catch { /* non-critical */ }
     }
 
     // ── INotifyPropertyChanged ────────────────────────────────────────

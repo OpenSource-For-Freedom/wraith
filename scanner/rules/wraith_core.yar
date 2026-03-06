@@ -79,11 +79,14 @@ rule WRAITH_Reflective_DLL_Injection
         description = "Detects reflective DLL injection pattern"
         severity = "CRITICAL"
         author = "WRAITH"
+        fp_note = "$r4 (bare MZ header) removed — it matched every legitimate DLL"
     strings:
         $r1 = "ReflectiveDLLInjection" nocase ascii wide
         $r2 = "Invoke-ReflectivePEInjection" nocase
         $r3 = "ReflectiveLoader" ascii wide
-        $r4 = { 4D 5A 90 00 03 00 00 00 04 00 00 00 FF FF }  // MZ header in unusual position
+        // Reflective loader bootstrap shellcode (Stephen Fewer's canonical bytes)
+        // Only fires when the full 64-byte bootstrap stub is present, not on any MZ header
+        $r4 = { 60 89 E5 31 C0 64 8B 50 30 8B 52 0C 8B 52 14 8B 72 28 }
     condition:
         $r1 or $r2 or $r3 or $r4
 }
@@ -188,6 +191,7 @@ rule WRAITH_CryptoMiner
         description = "Detects cryptocurrency mining software"
         severity = "HIGH"
         author = "WRAITH"
+        fp_note = "Bare $wallet regex (/[0-9a-zA-Z]{95}/) removed — matched any long base64/hash string. Monero wallet format requires '4' prefix + 94 alphanumeric chars in context of other miner signals."
     strings:
         $m1 = "stratum+tcp" nocase ascii wide
         $m2 = "stratum+ssl" nocase ascii wide
@@ -198,9 +202,12 @@ rule WRAITH_CryptoMiner
         $m7 = "CryptoNight" ascii wide
         $m8 = "nicehash" nocase ascii wide
         $pool = ".pool." ascii wide
-        $wallet = /[0-9a-zA-Z]{95}/ ascii  // Monero wallet length
+        // Monero wallet: starts with '4', exactly 95 chars — only score when paired with miner keyword
+        $wallet = /4[0-9A-Za-z]{94}/ ascii
     condition:
-        2 of ($m1,$m2,$m3,$m4,$m5,$m6,$m7,$m8) or ($m1 and $pool) or $wallet
+        2 of ($m1,$m2,$m3,$m4,$m5,$m6,$m7,$m8) or
+        ($m1 and $pool) or
+        ($wallet and 1 of ($m1,$m2,$m3,$m4,$m5,$m6,$m7,$m8,$pool))
 }
 
 rule WRAITH_RAT_Generic
@@ -209,7 +216,9 @@ rule WRAITH_RAT_Generic
         description = "Detects generic Remote Access Trojan patterns"
         severity = "CRITICAL"
         author = "WRAITH"
+        fp_note = "Generic string threshold raised 4->6/7 and scoped to PE files only. Browser JS legitimately contains screenshot/clipboard/webcam for browser APIs. Named families still 1-of."
     strings:
+        // Named RAT families — high confidence, keep at 1-of
         $r1 = "njRAT" nocase ascii wide
         $r2 = "DarkComet" nocase ascii wide
         $r3 = "NanoCore" nocase ascii wide
@@ -220,7 +229,8 @@ rule WRAITH_RAT_Generic
         $r8 = "AgentTesla" nocase ascii wide
         $r9 = "XWorm" nocase ascii wide
         $r10 = "RedLine" nocase ascii wide
-        // Generic RAT strings
+        // Generic capability strings — individually found in many legit apps;
+        // require 6 of 7 AND the file must be a PE (MZ header)
         $g1 = "keylogger" nocase ascii wide
         $g2 = "screenshot" nocase ascii wide
         $g3 = "clipboard" nocase ascii wide
@@ -228,9 +238,10 @@ rule WRAITH_RAT_Generic
         $g5 = "microphone" nocase ascii wide
         $g6 = "reverse shell" nocase ascii wide
         $g7 = "bind shell" nocase ascii wide
+        $mz = { 4D 5A }  // PE file guard
     condition:
         1 of ($r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8,$r9,$r10) or
-        4 of ($g1,$g2,$g3,$g4,$g5,$g6,$g7)
+        ($mz at 0 and 6 of ($g1,$g2,$g3,$g4,$g5,$g6,$g7))
 }
 
 rule WRAITH_Registry_Persistence_Script

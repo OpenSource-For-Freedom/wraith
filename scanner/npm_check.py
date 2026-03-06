@@ -272,12 +272,39 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+# Unscoped packages that genuinely resemble a popular package name but are
+# independently legitimate — exclude from typosquat detection.
+_KNOWN_LEGITIMATE_SIMILARS: frozenset = frozenset(
+    {
+        "eclint",  # EditorConfig linter — similar edit-distance to eslint but unrelated
+        "tslint",  # TypeScript linter (deprecated but well-known industry tool)
+        "vitest",  # Vite-native test runner — intentionally named after vite
+        "matcha",  # BDD-style assertion library — not mocha
+        "dot",  # DoT.js template engine — not a typosquat of 'got'
+        "jshint",  # Well-known JS linter — predates and unrelated to eslint
+        "recast",  # JS AST transformation library — not a typosquat of 'react'
+        "cypress",  # E2E testing framework — not a typosquat of 'express'
+    }
+)
+
+
 def _is_typosquat(name: str) -> Tuple[bool, str]:
-    clean = name.lstrip("@").split("/")[-1]
+    # Scoped packages (@scope/name) provide namespace isolation. Stripping the
+    # scope prefix before comparison causes false positives — e.g. @babel/core
+    # becomes "core" which matches "cors", @typescript-eslint/parser becomes
+    # "parser" which matches "parcel". Skip all scoped packages here; real
+    # malicious scoped packages are caught via COMPROMISED_PACKAGES.
+    if name.startswith("@"):
+        return False, ""
+
+    clean = name.lower()
+    if clean in _KNOWN_LEGITIMATE_SIMILARS:
+        return False, ""
+
     for popular in POPULAR_PACKAGES:
-        dist = _levenshtein(clean.lower(), popular.lower())
+        dist = _levenshtein(clean, popular.lower())
         ratio = dist / max(len(clean), len(popular))
-        if 0 < dist <= 2 and ratio < 0.4 and clean.lower() != popular.lower():
+        if 0 < dist <= 2 and ratio < 0.4 and clean != popular.lower():
             return True, popular
     return False, ""
 

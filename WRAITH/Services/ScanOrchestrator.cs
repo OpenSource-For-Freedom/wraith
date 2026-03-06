@@ -124,21 +124,14 @@ public class ScanOrchestrator
         bool startupOnly = false, CancellationToken ct = default)
     {
         path ??= SystemRoot;
-        Log("Starting native file system scan...");
         var exePath = System.IO.Path.Combine(_nativeDir, "fast_scan.exe");
 
+        // Native scanner is an optional component — silently skip when not present
+        // rather than attempting a build and emitting a noisy warning to the user.
         if (!System.IO.File.Exists(exePath))
-        {
-            Log($"Native scanner not found at {exePath}. Attempting build...");
-            await BuildNativeScanner(ct);
-        }
+            return new ScanResult { Mode = "native", Findings = new() };
 
-        if (!System.IO.File.Exists(exePath))
-        {
-            Log("Native scanner build failed. Skipping native scan.");
-            return new ScanResult { Error = "fast_scan.exe not found", Mode = "native" };
-        }
-
+        Log("Starting native file system scan...");
         var args = startupOnly ? "--startup" : $"--path=\"{path}\"";
         return await RunProcessAsync(exePath, args, "native", ct);
     }

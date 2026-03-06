@@ -15,16 +15,66 @@ sys.path.insert(0, ".")
 from attack_mapper import tag_findings
 
 MAPPER_CASES = [
-    {"category": "persistence",  "subcategory": "registry_run",      "title": "Run key found",       "reason": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"},
-    {"category": "heuristics",   "subcategory": "suspicious_cmdline", "title": "Encoded PowerShell",  "reason": "powershell -enc SQBFAFgA"},
-    {"category": "processes",    "subcategory": "hollowed_image",     "title": "Hollowed svchost",    "reason": "injection detected"},
-    {"category": "network",      "subcategory": "c2_port",            "title": "Port 4444 listener",  "reason": "meterpreter bind_shell"},
-    {"category": "credential",   "subcategory": "sam_lsa",            "title": "LSASS read",          "reason": "sekurlsa module call"},
-    {"category": "winsec",       "subcategory": "defender_disabled",  "title": "Defender disabled",   "reason": "tamper protection off"},
-    {"category": "yara",         "subcategory": "yara_match",         "title": "WannaCry match",      "reason": "rule ransom_wannacry"},
-    {"category": "events",       "subcategory": "unknown",            "title": "VSS deleted",         "reason": "vssadmin delete shadows"},
-    {"category": "ads",          "subcategory": "alternate_data_stream", "title": "ADS found",        "reason": "Zone.Identifier stream"},
-    {"category": "npm",          "subcategory": "typosquat",          "title": "Typosquat",           "reason": "lodash vs 1odash"},
+    {
+        "category": "persistence",
+        "subcategory": "registry_run",
+        "title": "Run key found",
+        "reason": "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    },
+    {
+        "category": "heuristics",
+        "subcategory": "suspicious_cmdline",
+        "title": "Encoded PowerShell",
+        "reason": "powershell -enc SQBFAFgA",
+    },
+    {
+        "category": "processes",
+        "subcategory": "hollowed_image",
+        "title": "Hollowed svchost",
+        "reason": "injection detected",
+    },
+    {
+        "category": "network",
+        "subcategory": "c2_port",
+        "title": "Port 4444 listener",
+        "reason": "meterpreter bind_shell",
+    },
+    {
+        "category": "credential",
+        "subcategory": "sam_lsa",
+        "title": "LSASS read",
+        "reason": "sekurlsa module call",
+    },
+    {
+        "category": "winsec",
+        "subcategory": "defender_disabled",
+        "title": "Defender disabled",
+        "reason": "tamper protection off",
+    },
+    {
+        "category": "yara",
+        "subcategory": "yara_match",
+        "title": "WannaCry match",
+        "reason": "rule ransom_wannacry",
+    },
+    {
+        "category": "events",
+        "subcategory": "unknown",
+        "title": "VSS deleted",
+        "reason": "vssadmin delete shadows",
+    },
+    {
+        "category": "ads",
+        "subcategory": "alternate_data_stream",
+        "title": "ADS found",
+        "reason": "Zone.Identifier stream",
+    },
+    {
+        "category": "npm",
+        "subcategory": "typosquat",
+        "title": "Typosquat",
+        "reason": "lodash vs 1odash",
+    },
 ]
 
 print("=" * 65)
@@ -34,9 +84,9 @@ print("=" * 65)
 tagged = tag_findings(copy.deepcopy(MAPPER_CASES))
 pass_count = 0
 for f in tagged:
-    tid   = f.get("technique_id",   "NOT MAPPED")
+    tid = f.get("technique_id", "NOT MAPPED")
     tname = f.get("technique_name", "")
-    ok    = "✓" if tid != "NOT MAPPED" else "✗"
+    ok = "✓" if tid != "NOT MAPPED" else "✗"
     if ok == "✓":
         pass_count += 1
     print(f"  {ok} [{f['category']:12s}] {f['title']:28s} -> {tid}")
@@ -57,7 +107,11 @@ print("=" * 65)
 
 indicator_cases = [
     # IP in reason (non-RFC1918)
-    {"path": "", "reason": "outbound to 185.220.101.5 on port 443", "title": "suspicious outbound"},
+    {
+        "path": "",
+        "reason": "outbound to 185.220.101.5 on port 443",
+        "title": "suspicious outbound",
+    },
     # RFC-1918 IP should be skipped
     {"path": "", "reason": "connection to 192.168.1.1", "title": "local conn"},
     # Domain in reason
@@ -65,7 +119,12 @@ indicator_cases = [
     # File path (won't exist but covers branch)
     {"path": "C:\\Windows\\System32\\notepad.exe", "reason": "", "title": "pe scan"},
     # Pre-stored hash
-    {"path": "", "reason": "", "title": "known malware", "file_hash": "db349b97c37d22f5ea1d1841e3c89eb4799f0203e46b2e779af4669fa154c271"},
+    {
+        "path": "",
+        "reason": "",
+        "title": "known malware",
+        "file_hash": "db349b97c37d22f5ea1d1841e3c89eb4799f0203e46b2e779af4669fa154c271",
+    },
     # No extractable IOC
     {"path": "", "reason": "general anomaly", "title": "unknown"},
 ]
@@ -91,7 +150,9 @@ if "--live" in sys.argv:
         print(f"\n  Auth-Key: configured ({api_key[:6]}...)")
     else:
         print("\n  Auth-Key: NOT configured — set abuse_ch_api_key in wraith.env.json")
-        print("  Register free at: https://abuse.ch/blog/community-api-key-for-all-tools/")
+        print(
+            "  Register free at: https://abuse.ch/blog/community-api-key-for-all-tools/"
+        )
         print("  Skipping live calls.\n")
         sys.exit(0)
 
@@ -129,33 +190,36 @@ if "--live" in sys.argv:
 
     print("\n  [4] Full enrich_findings pass on synthetic data")
     from ioc_enricher import enrich_findings
+
     test_findings = [
         {
-            "category":    "network",
+            "category": "network",
             "subcategory": "suspicious_outbound",
-            "title":       "Outbound C2 traffic",
-            "reason":      "connection to 185.220.101.5:443",
-            "severity":    "HIGH",
+            "title": "Outbound C2 traffic",
+            "reason": "connection to 185.220.101.5:443",
+            "severity": "HIGH",
             "anomaly_score": 60.0,
         },
         {
-            "category":    "yara",
+            "category": "yara",
             "subcategory": "yara_match",
-            "title":       "WannaCry YARA hit",
-            "reason":      "ransom_wannacry rule matched",
-            "file_hash":   WANNACRY_SHA256,
-            "severity":    "HIGH",
+            "title": "WannaCry YARA hit",
+            "reason": "ransom_wannacry rule matched",
+            "file_hash": WANNACRY_SHA256,
+            "severity": "HIGH",
             "anomaly_score": 65.0,
         },
     ]
     enriched = enrich_findings(test_findings)
     for f in enriched:
         sources = f.get("intel_sources", [])
-        family  = f.get("malware_family", "unknown")
-        sev     = f.get("severity", "?")
-        score   = f.get("anomaly_score", 0)
+        family = f.get("malware_family", "unknown")
+        sev = f.get("severity", "?")
+        score = f.get("anomaly_score", 0)
         print(f"      {f['title']}")
-        print(f"        sources={sources}  family={family}  severity={sev}  score={score}")
+        print(
+            f"        sources={sources}  family={family}  severity={sev}  score={score}"
+        )
 
     print()
 

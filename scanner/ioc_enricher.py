@@ -65,6 +65,7 @@ _SEV_UP: Dict[str, str] = {
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
+
 def _sha256_file(path: str) -> Optional[str]:
     """Compute SHA-256 of a file. Returns None on any error."""
     try:
@@ -122,6 +123,7 @@ def _extract_indicator(finding: Dict[str, Any]) -> Optional[tuple]:
 
 # ── API wrappers ──────────────────────────────────────────────────────────
 
+
 def _auth_headers() -> Dict[str, str]:
     """Return Auth-Key header dict if a key is configured, else empty dict."""
     key = _API_KEY or _load_api_key()  # re-check in case set after module load
@@ -168,6 +170,7 @@ def query_threatfox(ioc: str) -> Optional[Dict]:
 
 # ── Main enrichment pass ──────────────────────────────────────────────────
 
+
 def enrich_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     For every finding that has an extractable indicator (file hash, IP, domain):
@@ -200,8 +203,7 @@ def enrich_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if mb_hit:
                 intel_sources.append("MalwareBazaar")
                 malware_family = (
-                    mb_hit.get("signature")
-                    or (mb_hit.get("tags") or [None])[0]
+                    mb_hit.get("signature") or (mb_hit.get("tags") or [None])[0]
                 )
             time.sleep(0.3)
 
@@ -210,7 +212,9 @@ def enrich_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if tf_hit:
             intel_sources.append("ThreatFox")
             if not malware_family:
-                malware_family = tf_hit.get("malware_printable") or tf_hit.get("malware")
+                malware_family = tf_hit.get("malware_printable") or tf_hit.get(
+                    "malware"
+                )
             # Pull ATT&CK tag if ThreatFox supplied one
             for tag in tf_hit.get("tags") or []:
                 if isinstance(tag, str) and re.match(r"T\d{4}", tag.upper()):
@@ -235,7 +239,9 @@ def enrich_findings(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         # Boost anomaly score proportional to corroboration count
         boost = 15.0 * len(intel_sources)
-        f["anomaly_score"] = round(min(100.0, float(f.get("anomaly_score", 0)) + boost), 2)
+        f["anomaly_score"] = round(
+            min(100.0, float(f.get("anomaly_score", 0)) + boost), 2
+        )
 
         # Append readable note to reason
         note_parts = [f"Corroborated by: {', '.join(intel_sources)}"]

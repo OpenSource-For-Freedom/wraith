@@ -216,7 +216,26 @@ def scan_events_win32(hours: int) -> List[Dict]:
                 }
             )
 
-    return findings
+    # Deduplicate suspicious_keyword findings.
+    # Windows routes events to multiple log channels simultaneously (ETW forwarding),
+    # so the same keyword event with the same message may appear in Application,
+    # PowerShell/Operational, TaskScheduler/Operational, Defender/Operational, and
+    # Sysmon/Operational all at once.  Keep only the first occurrence of each
+    # (event_id, reason, message[:80]) triple.
+    seen_kw: set = set()
+    deduped: List[Dict] = []
+    for f in findings:
+        if f.get("subcategory") == "suspicious_keyword":
+            key = (
+                f.get("event_id"),
+                f.get("reason", ""),
+                (f.get("message_preview") or "")[:80],
+            )
+            if key in seen_kw:
+                continue
+            seen_kw.add(key)
+        deduped.append(f)
+    return deduped
 
 
 def scan_events_powershell(hours: int) -> List[Dict]:

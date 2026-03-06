@@ -75,6 +75,49 @@ WINDOWS_PRODUCTS: Set[str] = {
     "Multiple Products",
 }
 
+# Products that have been removed from modern Windows (Win10 1903+ / Win11).
+# Never emit KEV findings for these on a desktop scan — the attack surface is gone.
+WINDOWS_REMOVED_PRODUCTS: Set[str] = {
+    "Internet Explorer",
+    "Silverlight",
+    # SMBv1 is not shipped by Win11 and is disabled by default on Win10 1709+
+    "SMBv1",
+    "SMBv1 server",
+}
+
+# Products that only exist when explicitly installed as a server role or optional feature.
+# Only emit KEV findings for these when the product is detected in the installed software list.
+WINDOWS_OPTIONAL_PRODUCTS: Set[str] = {
+    "Exchange Server",
+    "SharePoint",
+    ".NET Framework, SharePoint, Visual Studio",
+    "Internet Information Services (IIS)",
+    "Office",
+    "Office Outlook",
+    "Excel",
+    "PowerPoint",
+    "Publisher",
+}
+
+# Search keyword per optional product to match against installed_names_lower
+_OPTIONAL_PRODUCT_KEYWORDS: Dict[str, str] = {
+    "Exchange Server": "exchange",
+    "SharePoint": "sharepoint",
+    ".NET Framework, SharePoint, Visual Studio": "sharepoint",
+    "Internet Information Services (IIS)": "internet information",
+    "Office": "microsoft office",
+    "Office Outlook": "outlook",
+    "Excel": "excel",
+    "PowerPoint": "powerpoint",
+    "Publisher": "microsoft publisher",
+}
+
+# Windows 11 baseline: all patches from the Win7/8/10 era are baked into the Win11 installer.
+# On Win11 (build >= 22000), CVEs from this year and earlier with no KB reference
+# are definitively patched — skip them to eliminate historical noise.
+WINDOWS_11_BUILD_MIN: int = 22000
+WIN11_LEGACY_CVE_YEAR_CUTOFF: int = 2020
+
 # Third-party products to match against registry display names (lowercase → registry keyword)
 THIRD_PARTY_MATCH: Dict[str, str] = {
     "7-zip": "7-zip",
@@ -115,6 +158,30 @@ THIRD_PARTY_MATCH: Dict[str, str] = {
     "manage engine": "manageengine",
     "manageengine": "manageengine",
     "progress": "progress",
+}
+
+# Minimum installed version that is considered safe for each CVE.
+# Structured as {registry_keyword: {cve_id: first_safe_version}}.
+# If installed_version >= first_safe_version the CVE is patched — skip the finding.
+SOFTWARE_CVE_FIXED_IN: Dict[str, Dict[str, str]] = {
+    "firefox": {
+        "CVE-2013-1690": "22.0",
+        "CVE-2015-4495": "39.0.3",
+        "CVE-2016-9079": "50.0.2",
+        "CVE-2019-11707": "67.0.3",
+        "CVE-2019-11708": "67.0.4",
+        "CVE-2022-26485": "97.0.2",
+        "CVE-2022-26486": "97.0.2",
+        "CVE-2024-9680": "131.0.2",
+    },
+    "google chrome": {
+        "CVE-2019-5786": "72.0.3626.121",
+        "CVE-2019-13720": "78.0.3904.87",
+    },
+    "7-zip": {
+        # Fixed in 24.02; 25.01+ is safe
+        "CVE-2025-0411": "24.02",
+    },
 }
 
 # ── WRAITH Priority CVE Watchlist ─────────────────────────────────────────────
@@ -216,7 +283,16 @@ def _load_kev_catalog() -> List[Dict]:
 
 
 def _get_installed_kbs() -> Set[str]:
-    """Return set of installed KB numbers (e.g. 'KB5034765') via Get-HotFix."""
+    """Return set of installed KB numbers from two sources.
+
+    Get-HotFix (Win32_QuickFixEngineering) only surfaces security-only and
+    standalone patches; it misses cumulative updates on Windows 10/11 which
+    are delivered via Windows Update and tracked in the WU history COM object.
+    Combining both sources gives an accurate picture of the patch state.
+    """
+    kbs: Set[str] = set()
+
+    # ── Source 1: Get-HotFix (WMI Win32_QuickFixEngineering) ──────────────
     try:
         result = subprocess.run(
             [
@@ -232,16 +308,44 @@ def _get_installed_kbs() -> Set[str]:
         )
         if result.returncode == 0 and result.stdout.strip():
             raw = result.stdout.strip()
-            if raw.startswith("["):
-                items = json.loads(raw)
-            else:
-                items = json.loads(f"[{raw}]")
-            kbs = {str(k).upper().strip() for k in items if k}
-            log(f"Found {len(kbs)} installed KBs")
-            return kbs
+            items = json.loads(raw if raw.startswith("[") else f"[{raw}]")
+            kbs.update(str(k).upper().strip() for k in items if k)
     except Exception as e:
         log(f"Get-HotFix failed: {e}")
-    return set()
+
+    # ── Source 2: Windows Update history (COM) ─────────────────────────────
+    # This catches cumulative updates that Win32_QuickFixEngineering misses on
+    # Windows 10 / 11. The COM object is always present on supported Windows.
+    _WU_PS = """
+$s = New-Object -ComObject Microsoft.Update.Session
+$h = $s.CreateUpdateSearcher()
+$count = $h.GetTotalHistoryCount()
+if ($count -gt 0) {
+    $h.QueryHistory(0, [Math]::Min($count, 500)) |
+        Where-Object { $_.ResultCode -eq 2 } |
+        ForEach-Object { $_.Title } |
+        Select-String -Pattern 'KB\\d{6,8}' -AllMatches |
+        ForEach-Object { $_.Matches } |
+        ForEach-Object { $_.Value.ToUpper() }
+} else { @() }
+"""
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _WU_PS],
+            capture_output=True,
+            text=True,
+            timeout=45,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            for line in result.stdout.splitlines():
+                kb = line.strip().upper()
+                if kb.startswith("KB") and kb[2:].isdigit():
+                    kbs.add(kb)
+    except Exception as e:
+        log(f"WU history COM query failed: {e}")
+
+    log(f"Found {len(kbs)} installed KBs (HotFix + WU history)")
+    return kbs
 
 
 def _get_windows_version() -> Dict[str, Any]:
@@ -337,22 +441,40 @@ def _get_installed_software() -> List[Dict[str, str]]:
 # ── Matching helpers ──────────────────────────────────────────────────────────
 
 
+def _version_tuple(v: str) -> tuple:
+    """Parse a version string into a comparable integer tuple, e.g. '97.0.2' → (97, 0, 2)."""
+    parts = []
+    for segment in re.split(r"[.\-]", str(v)):
+        try:
+            parts.append(int(segment))
+        except ValueError:
+            pass
+    return tuple(parts) or (0,)
+
+
 def _extract_kbs_from_notes(notes: str) -> List[str]:
-    """Pull any KB\d+ references from KEV notes field."""
+    """Pull any KB#### references from KEV notes field."""
     return re.findall(r"KB\d{6,8}", notes, flags=re.IGNORECASE)
 
 
-def _severity_for_entry(entry: Dict) -> str:
-    """Map KEV entry to WRAITH severity."""
+def _severity_for_entry(entry: Dict, patch_confirmed_missing: bool = False) -> str:
+    """Map KEV entry to WRAITH severity.
+
+    CRITICAL is reserved for entries where we can CONFIRM the fixing KB is not
+    installed.  Ransomware-linked entries with unknown patch status are HIGH —
+    we cannot claim CRITICAL without evidence of vulnerability.
+    """
     ransomware = entry.get("knownRansomwareCampaignUse", "Unknown") == "Known"
     added = _parse_date(entry.get("dateAdded", ""))
     recent = added and (datetime.now() - added).days <= RECENT_DAYS
 
-    if ransomware:
+    if patch_confirmed_missing:
         return "CRITICAL"
+    if ransomware:
+        return "HIGH"  # Ransomware-linked but patch status unknown — HIGH, not CRITICAL
     if recent:
-        return "HIGH"
-    return "MEDIUM"
+        return "MEDIUM"
+    return "LOW"
 
 
 def _parse_date(s: str) -> Optional[datetime]:
@@ -534,8 +656,17 @@ def scan_cisa_kev() -> List[Dict]:
         if product not in WINDOWS_PRODUCTS:
             continue
 
+        # Skip products removed from modern Windows — attack surface is gone
+        if product in WINDOWS_REMOVED_PRODUCTS:
+            continue
+
+        # Skip optional/server products not detected on this host
+        if product in WINDOWS_OPTIONAL_PRODUCTS:
+            keyword = _OPTIONAL_PRODUCT_KEYWORDS.get(product, product.lower())
+            if not any(keyword in n for n in installed_names_lower):
+                continue
+
         ransomware = entry.get("knownRansomwareCampaignUse", "Unknown") == "Known"
-        sev = _severity_for_entry(entry)
 
         # Try to find an associated KB in the notes
         kbs_in_entry = _extract_kbs_from_notes(entry.get("notes", ""))
@@ -544,6 +675,7 @@ def scan_cisa_kev() -> List[Dict]:
         patch_note = (
             "No KB identifier found in KEV entry — verify manually via Windows Update."
         )
+        patch_confirmed_missing = False
 
         if kbs_in_entry:
             installed_any = any(kb.upper() in installed_kbs for kb in kbs_in_entry)
@@ -552,18 +684,34 @@ def scan_cisa_kev() -> List[Dict]:
                 continue
             else:
                 patch_status = "patch_missing"
+                patch_confirmed_missing = True
                 patch_note = (
                     f"Required patch(es) {', '.join(kbs_in_entry)} NOT found in installed KBs. "
                     "Apply Windows Updates immediately."
                 )
-                # Elevate severity if patch is confirmed missing
-                if sev == "MEDIUM":
-                    sev = "HIGH"
+
+        sev = _severity_for_entry(
+            entry, patch_confirmed_missing=patch_confirmed_missing
+        )
 
         # Skip old entries where we have no KB info and no ransomware link (too noisy)
         if patch_status == "patch_status_unknown" and not ransomware:
             if added and added < date_cutoff:
                 continue  # Old entry, no KB ref, no ransomware — skip to reduce noise
+
+        # On Win11+, all Win7/Win10-era patches are baked into the OS baseline.
+        # CVEs from WIN11_LEGACY_CVE_YEAR_CUTOFF or earlier with no KB reference
+        # are definitively patched — even if marked ransomware-linked.
+        if (
+            not patch_confirmed_missing
+            and win_version.get("build", 0) >= WINDOWS_11_BUILD_MIN
+        ):
+            try:
+                cve_year = int(cve_id.split("-")[1])
+            except (IndexError, ValueError):
+                cve_year = 9999
+            if cve_year <= WIN11_LEGACY_CVE_YEAR_CUTOFF:
+                continue
 
         reference_url = _msrc_url(entry) or _nvd_url(cve_id)
 
@@ -624,7 +772,7 @@ def scan_cisa_kev() -> List[Dict]:
         if not matched_install:
             continue  # Software not detected on this host
 
-        sev = _severity_for_entry(entry)
+        sev = _severity_for_entry(entry, patch_confirmed_missing=False)
         ransomware = entry.get("knownRansomwareCampaignUse", "Unknown") == "Known"
         reference_url = _nvd_url(cve_id)
 
@@ -634,6 +782,12 @@ def scan_cisa_kev() -> List[Dict]:
             if registry_keyword in sw["name"].lower():  # type: ignore[possibly-undefined]
                 installed_version = sw.get("version", "")
                 break
+
+        # Version check: skip if the installed version is known-safe for this CVE
+        if installed_version and cve_id in SOFTWARE_CVE_FIXED_IN.get(registry_keyword, {}):  # type: ignore[possibly-undefined]
+            fixed_in = SOFTWARE_CVE_FIXED_IN[registry_keyword][cve_id]  # type: ignore[possibly-undefined]
+            if _version_tuple(installed_version) >= _version_tuple(fixed_in):
+                continue  # CVE is patched in this installed version
 
         reason_parts = [
             f"{entry.get('vulnerabilityName', cve_id)}",

@@ -2,6 +2,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
@@ -28,11 +29,65 @@ public partial class MainWindow : Window
     // ── GIF sprite frame cache (loaded once, shared across all passes) ──
     private static BitmapFrame[]? _gifFrames;
     private static int[]?         _gifDelayMs;
-    // ── Win32 for window resize via custom chrome ───────────────────────
+    // ── Win32 for window chrome ──────────────────────────────────────────
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")]
     private static extern bool ReleaseCapture();
+
+    // ── WM_NCHITTEST resize hook ─────────────────────────────────────────
+    private const int WM_NCHITTEST    = 0x0084;
+    private const int HTLEFT          = 10;
+    private const int HTRIGHT         = 11;
+    private const int HTTOP           = 12;
+    private const int HTTOPLEFT       = 13;
+    private const int HTTOPRIGHT      = 14;
+    private const int HTBOTTOM        = 15;
+    private const int HTBOTTOMLEFT    = 16;
+    private const int HTBOTTOMRIGHT   = 17;
+    private const int GripPx          = 8;   // physical pixels from edge
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+        source?.AddHook(ResizeHook);
+    }
+
+    private IntPtr ResizeHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam,
+                              ref bool handled)
+    {
+        if (msg == WM_NCHITTEST && WindowState == WindowState.Normal)
+        {
+            // lParam is screen coords in physical pixels
+            int sx = unchecked((short)(lParam.ToInt32() & 0xFFFF));
+            int sy = unchecked((short)(lParam.ToInt32() >> 16));
+
+            var ps    = PresentationSource.FromVisual(this);
+            double dx = ps?.CompositionTarget.TransformToDevice.M11 ?? 1.0;
+            double dy = ps?.CompositionTarget.TransformToDevice.M22 ?? 1.0;
+
+            double wL = Left            * dx;
+            double wT = Top             * dy;
+            double wR = (Left + Width)  * dx;
+            double wB = (Top  + Height) * dy;
+
+            bool onL = sx <= wL + GripPx;
+            bool onR = sx >= wR - GripPx;
+            bool onT = sy <= wT + GripPx;
+            bool onB = sy >= wB - GripPx;
+
+            if (onT && onL) { handled = true; return new IntPtr(HTTOPLEFT);     }
+            if (onT && onR) { handled = true; return new IntPtr(HTTOPRIGHT);    }
+            if (onB && onL) { handled = true; return new IntPtr(HTBOTTOMLEFT);  }
+            if (onB && onR) { handled = true; return new IntPtr(HTBOTTOMRIGHT); }
+            if (onL)        { handled = true; return new IntPtr(HTLEFT);        }
+            if (onR)        { handled = true; return new IntPtr(HTRIGHT);       }
+            if (onT)        { handled = true; return new IntPtr(HTTOP);         }
+            if (onB)        { handled = true; return new IntPtr(HTBOTTOM);      }
+        }
+        return IntPtr.Zero;
+    }
 
     public MainWindow()
     {
@@ -89,10 +144,17 @@ public partial class MainWindow : Window
         // Pulse the status dot once
         PulseSpinnerDot();
 
-        // Kick off first-run dependency check / install in the background.
-        // Progress and errors are streamed to the log panel automatically.
+        // Wire auto-scroll when new log entries arrive
         if (DataContext is MainViewModel vm)
+        {
+            vm.LogEntries.CollectionChanged += (_, _) =>
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                    () => LogScroller.ScrollToBottom());
+
+            // Kick off first-run dependency check / install in the background.
+            // Progress and errors are streamed to the log panel automatically.
             _ = vm.InitializeAsync();
+        }
     }
 
     // ── Custom chrome ──────────────────────────────────────────────────
@@ -128,13 +190,7 @@ public partial class MainWindow : Window
                 vm.ScanPath = dlg.SelectedPath;
     }
 
-    // ── Auto-scroll log ───────────────────────────────────────────────
-    private void TxtLog_TextChanged(object s, TextChangedEventArgs e)
-    {
-        if (s is TextBox tb) tb.ScrollToEnd();
-    }
-
-    // ══════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────
     //  Patronus Spell Animation
     //  Three expanding glowing rings spray outward from centre while scan runs.
     // ══════════════════════════════════════════════════════════════════

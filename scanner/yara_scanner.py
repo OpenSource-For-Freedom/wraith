@@ -154,17 +154,96 @@ def load_rules(rules_dir: Path) -> Optional[Any]:
         return None
 
 
+# ── Known-good path prefixes (case-insensitive) ─────────────────────────
+# Files under these paths are almost always legitimate Windows / vendor
+# binaries. YARA still scans them but findings are downgraded to INFO and
+# only emitted when the matched rule is a named family (not generic).
+_localappdata = os.environ.get("LOCALAPPDATA", "").lower()
+_programfiles = os.environ.get("PROGRAMFILES", "C:\\Program Files").lower()
+_programfiles86 = os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)").lower()
+_windir = os.environ.get("WINDIR", "C:\\Windows").lower()
+
+KNOWN_GOOD_PATH_PREFIXES = [
+    # Microsoft Edge (Chromium) — huge JS bundles legitimately contain many heuristic strings
+    os.path.join(_localappdata, "microsoft", "edge"),
+    os.path.join(_localappdata, "microsoft", "edgewebview"),
+    # Windows Store / UWP app packages
+    os.path.join(_localappdata, "packages"),
+    # Windows system internals
+    os.path.join(_windir, "system32"),
+    os.path.join(_windir, "syswow64"),
+    os.path.join(_windir, "winsxs"),
+    # Vendor build caches (Rust cargo, Qt, npm from known locations)
+    os.path.join(_localappdata, "temp", "cargo-install"),
+    os.path.join(_localappdata, "temp", "cargo-update"),
+    # Visual C++ / .NET runtimes
+    os.path.join(_programfiles, "microsoft visual studio"),
+    os.path.join(_programfiles86, "microsoft visual studio"),
+    os.path.join(_localappdata, "microsoft", "windowsapps"),
+]
+
+# Rule names whose namespace/name signals a named family (high confidence).
+# Findings from known-good paths are only kept if the rule is in this set
+# OR the rule name contains one of these substrings.
+_NAMED_FAMILY_SUBSTRINGS = (
+    "mimikatz",
+    "cobaltstrike",
+    "cobalt_strike",
+    "wannacry",
+    "lazarus",
+    "apt",
+    "rat_",
+    "njrat",
+    "darkcomet",
+    "nanocore",
+    "asyncrat",
+    "quasar",
+    "remcos",
+    "bitrat",
+    "agentTesla",
+    "xworm",
+    "redline",
+)
+
+_SEVERITY_MAP = {
+    "critical": "CRITICAL",
+    "high": "HIGH",
+    "medium": "MEDIUM",
+    "low": "LOW",
+    "info": "INFO",
+}
+
+
+def _is_known_good_path(filepath: str) -> bool:
+    fp = filepath.lower()
+    return any(fp.startswith(pfx) for pfx in KNOWN_GOOD_PATH_PREFIXES if pfx)
+
+
+def _rule_is_named_family(rule_name: str) -> bool:
+    rn = rule_name.lower()
+    return any(s in rn for s in _NAMED_FAMILY_SUBSTRINGS)
+
+
 def scan_file_yara(rules, filepath: str) -> List[Dict]:
     """Scan a single file with compiled YARA rules."""
     findings = []
+    known_good = _is_known_good_path(filepath)
     try:
         matches = rules.match(filepath, timeout=10)
         for m in matches:
+            # Suppress noise from known-good paths unless it's a named family rule
+            if known_good and not _rule_is_named_family(m.rule):
+                continue
+
+            # Use severity from rule meta when present; fall back to CRITICAL
+            meta_severity = (m.meta.get("severity") or "").strip().upper()
+            severity = _SEVERITY_MAP.get(meta_severity.lower(), "CRITICAL")
+
             findings.append(
                 {
                     "category": "yara",
                     "subcategory": "signature_match",
-                    "severity": "CRITICAL",
+                    "severity": severity,
                     "title": f"YARA Match: {m.rule}",
                     "path": filepath,
                     "rule": m.rule,
@@ -232,16 +311,33 @@ def scan_yara(scan_path: str, rules_dir_str: str) -> Dict[str, Any]:
             os.environ.get("TEMP", ""), ".net", "wraith"
         ).lower()
         for root, dirs, files in os.walk(str(base)):
-            # Skip WinSxS etc and WRAITH's own extraction dir
-            if root.lower().startswith(_self_prefix):
+            root_lower = root.lower()
+            # Skip WinSxS, WRAITH's own extraction dir, and known-good app dirs
+            if root_lower.startswith(_self_prefix):
                 dirs.clear()
                 continue
-            dirs[:] = [
-                d
-                for d in dirs
-                if d.lower()
-                not in {"winsxs", "assembly", "microsoft.net", "$recycle.bin"}
-            ]
+            if any(root_lower.startswith(p) for p in KNOWN_GOOD_PATH_PREFIXES if p):
+                # Still descend (scan_file_yara will suppress generic noise)
+                # but skip massive JS-heavy browser cache subdirs entirely
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d.lower()
+                    not in {
+                        "cache",
+                        "code cache",
+                        "gpucache",
+                        "blob_storage",
+                        "service worker",
+                    }
+                ]
+            else:
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if d.lower()
+                    not in {"winsxs", "assembly", "microsoft.net", "$recycle.bin"}
+                ]
             for fname in files:
                 fpath = os.path.join(root, fname)
                 if fpath in scanned_paths:

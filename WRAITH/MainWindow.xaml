@@ -25,16 +25,18 @@
     <conv:ProcessStatusToBrushConverter x:Key="ProcStatusBrush"/>
     <conv:ProcessStatusToFgConverter    x:Key="ProcStatusFg"/>
     <conv:EmptyStringToCollapsedConverter x:Key="EmptyCollapsed"/>
-    <conv:IsLiveToVisibilityConverter   x:Key="IsLiveVis"/>
-  </Window.Resources>
+    <conv:IsLiveToVisibilityConverter   x:Key="IsLiveVis"/>    <conv:LogTagToBrushConverter           x:Key="LogTagBrush"/>  </Window.Resources>
 
   <Window.DataContext>
     <vm:MainViewModel/>
   </Window.DataContext>
 
-  <!-- Outer chrome border -->
-  <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
-          Background="{StaticResource BrWindowBackground}">
+  <!-- Resize grip wrapper -->
+  <Grid>
+
+    <!-- Outer chrome border -->
+    <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
+            Background="{StaticResource BrWindowBackground}">
     <Border.Effect>
       <DropShadowEffect Color="#4D2090" BlurRadius="30" ShadowDepth="0" Opacity="0.6"/>
     </Border.Effect>
@@ -829,11 +831,23 @@
                 </TextBlock>
               </Border>
               <Grid Grid.Row="1">
-                <TextBox Style="{StaticResource LogBox}"
-                         x:Name="TxtLog"
-                         Text="{Binding LogOutput, Mode=OneWay}"
-                         TextChanged="TxtLog_TextChanged"
-                         Background="Transparent"/>
+                <ScrollViewer x:Name="LogScroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              Background="Transparent"
+                              Padding="6,4">
+                  <ItemsControl ItemsSource="{Binding LogEntries}" Focusable="False">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Text}"
+                                   Foreground="{Binding Tag, Converter={StaticResource LogTagBrush}}"
+                                   FontFamily="Consolas" FontSize="11"
+                                   TextWrapping="NoWrap"
+                                   Margin="0,0,0,1"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
               </Grid>
             </Grid>
           </Border>
@@ -896,4 +910,6 @@
 
     </Grid>
   </Border>
+
+  </Grid>
 </Window>

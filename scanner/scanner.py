@@ -21,12 +21,15 @@ from typing import List, Dict, Any
 try:
     from attack_mapper import tag_findings
 except ImportError:
+
     def tag_findings(f):  # type: ignore
         return f
+
 
 try:
     from ioc_enricher import enrich_findings
 except ImportError:
+
     def enrich_findings(f):  # type: ignore
         return f
 
