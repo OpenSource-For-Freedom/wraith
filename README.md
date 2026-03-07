@@ -10,7 +10,8 @@
  ╚███╔███╔╝██║  ██║██║  ██║██║   ██║   ██║  ██║
   ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝
 </pre>
-
+<a href="https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH">
+  <img alt="clicks" src="https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH.svg?style=flat-square" />
 **Windows Runtime Analysis & Intrusion Threat Hunter**
 **With a** ![Unix](https://img.shields.io/badge/Unix-backbone-2ea44f) **and OpenSource data retrieval system** · *Expecto Patronum*
 
