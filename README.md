@@ -24,6 +24,10 @@ A native Windows threat-hunting application that orchestrates 14 scan modules ac
 
 </div>
 
+
+## Installation
+- Install from [release](https://github.com/OpenSource-For-Freedom/wraith/releases) packaged source.
+
 ---
 
 ## Documentation
@@ -115,7 +119,7 @@ Select any finding tied to a running process, then hit **Kill Process** in the t
 
 ---
 
-## Quick Start
+## Quick Start for Development 
 
 ```bat
 git clone https://github.com/YOUR_USERNAME/wraith.git
