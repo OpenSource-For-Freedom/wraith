@@ -21,7 +21,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
-This tools stands eith **Defender** qnd can supply **Sentinal** true evbt alerts and siurves found through the OpenSource pipeline. 
+This tools stands eith **Defender** and can supply **Sentinal** true event alerts and sources found through the OpenSource pipeline. 
 </div>
 
 
