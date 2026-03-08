@@ -180,6 +180,10 @@ KNOWN_GOOD_PATH_PREFIXES = [
     os.path.join(_programfiles, "microsoft visual studio"),
     os.path.join(_programfiles86, "microsoft visual studio"),
     os.path.join(_localappdata, "microsoft", "windowsapps"),
+    # Windows diagnostic infrastructure — SDIAG extracts system DLLs to Temp
+    # for analysis; audiospew.dll, audiodiag.dll etc. are legitimate Windows files
+    os.path.join(_windir, "temp"),
+    os.path.join(os.environ.get("TEMP", "").lower(), ""),  # %TEMP%
 ]
 
 # Rule names whose namespace/name signals a named family (high confidence).

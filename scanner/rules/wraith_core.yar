@@ -216,9 +216,9 @@ rule WRAITH_RAT_Generic
         description = "Detects generic Remote Access Trojan patterns"
         severity = "CRITICAL"
         author = "WRAITH"
-        fp_note = "Generic string threshold raised 4->6/7 and scoped to PE files only. Browser JS legitimately contains screenshot/clipboard/webcam for browser APIs. Named families still 1-of."
+        fp_note = "All checks now scoped to PE files only (MZ at 0). Named families previously matched JS/browser extension files that coincidentally contain vendor names (e.g. Remcos is a legitimate vendor brand). Generic string threshold 6/7 unchanged."
     strings:
-        // Named RAT families — high confidence, keep at 1-of
+        // Named RAT families — high confidence
         $r1 = "njRAT" nocase ascii wide
         $r2 = "DarkComet" nocase ascii wide
         $r3 = "NanoCore" nocase ascii wide
@@ -240,8 +240,14 @@ rule WRAITH_RAT_Generic
         $g7 = "bind shell" nocase ascii wide
         $mz = { 4D 5A }  // PE file guard
     condition:
-        1 of ($r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8,$r9,$r10) or
-        ($mz at 0 and 6 of ($g1,$g2,$g3,$g4,$g5,$g6,$g7))
+        // PE-only: browser extensions, minified JS, and other non-PE files
+        // legitimately contain RAT vendor names (e.g. Remcos LLC brand) and
+        // browser API strings (screenshot, clipboard, webcam) in normal use.
+        $mz at 0 and
+        (
+            1 of ($r1,$r2,$r3,$r4,$r5,$r6,$r7,$r8,$r9,$r10) or
+            6 of ($g1,$g2,$g3,$g4,$g5,$g6,$g7)
+        )
 }
 
 rule WRAITH_Registry_Persistence_Script
