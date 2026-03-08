@@ -406,13 +406,7 @@ jobs:
             ```
 
       - name: Upload Velopack assets to release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          vpk upload github `
-            --repoUrl https://github.com/OpenSource-For-Freedom/wraith `
-            --token $env:GH_TOKEN `
-            --tag $v `
-            --outputDir ./velopack-out
+          gh release upload ${{ steps.ver.outputs.version }} ./velopack-out/* --clobber
