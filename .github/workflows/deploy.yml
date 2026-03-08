@@ -295,6 +295,24 @@ jobs:
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk
 
+      # Velopack requires a NORMAL (non-single-file) publish to work correctly.
+      # Single-file merges all assemblies into one blob that Velopack cannot
+      # introspect, sign delta patches against, or bootstrap its update hooks into.
+      # We keep the single-file publish above for the ZIP/START.bat distribution,
+      # and produce a separate multi-file output purely for the Velopack installer.
+      - name: Publish WRAITH for Velopack (multi-file, win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish WRAITH/WRAITH.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            --output ./publish-velopack
+          Write-Host "Velopack publish files:"
+          Get-ChildItem ./publish-velopack | Select-Object Name, Length
+
       - name: Package with Velopack
         shell: pwsh
         run: |
@@ -302,7 +320,7 @@ jobs:
           vpk pack `
             --packId WRAITH `
             --packVersion $v `
-            --packDir ./publish `
+            --packDir ./publish-velopack `
             --mainExe WRAITH.exe `
             --outputDir ./velopack-out
           Write-Host "Velopack output:"
