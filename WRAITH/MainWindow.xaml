@@ -309,7 +309,11 @@
               <!-- Scan target -->
               <TextBlock Text="SCAN TARGET" Style="{StaticResource GoldLabel}" Margin="0,0,0,4"/>
               <TextBox x:Name="TxtScanPath" Text="{Binding ScanPath, UpdateSourceTrigger=PropertyChanged}"
-                       Margin="0,0,0,2" ToolTip="Root path to scan (use C:\ for full scan)"/>
+                       Margin="0,0,0,2"
+                       ToolTip="Root path to scan — type, browse, or drag a file / folder here"
+                       AllowDrop="True"
+                       DragOver="TxtScanPath_DragOver"
+                       Drop="TxtScanPath_Drop"/>
               <Button Content="Browse…" Style="{StaticResource GhostButton}" Margin="0,2,0,8"
                       Click="BtnBrowse_Click"/>
 

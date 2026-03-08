@@ -1,0 +1,130 @@
+<Window x:Class="WRAITH.PathConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WRAITH - Add Python to PATH"
+        Width="480" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Background="Transparent">
+
+  <Grid>
+    <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
+            Background="{StaticResource BrWindowBackground}">
+      <Border.Effect>
+        <DropShadowEffect Color="#4D2090" BlurRadius="28" ShadowDepth="0" Opacity="0.75"/>
+      </Border.Effect>
+
+      <StackPanel>
+
+        <!-- Drag strip / title bar -->
+        <Border Background="#05051A" CornerRadius="8,8,0,0"
+                Height="34" MouseLeftButtonDown="TitleBar_MouseDown">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
+            <Image Source="Assets/wraith.png" Width="15" Height="15"
+                   VerticalAlignment="Center" Margin="0,0,7,0"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="WRAITH  -  Add Python to PATH"
+                       Foreground="#3E5568" FontSize="11"
+                       VerticalAlignment="Center" FontFamily="Segoe UI"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Body -->
+        <StackPanel Margin="32,24,32,28">
+
+          <!-- Heading -->
+          <TextBlock x:Name="HeadingText" Text="Add Python to PATH?" FontSize="19" FontWeight="Bold"
+                     FontFamily="Segoe UI" Margin="0,0,0,4">
+            <TextBlock.Foreground>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#D4AF37" Offset="0"/>
+                <GradientStop Color="#E8F4FF" Offset="0.55"/>
+                <GradientStop Color="#D4AF37" Offset="1"/>
+              </LinearGradientBrush>
+            </TextBlock.Foreground>
+          </TextBlock>
+
+          <TextBlock x:Name="SubtitleText" Text="Review the directories below before confirming."
+                     Foreground="#36495A" FontSize="10.5" FontFamily="Segoe UI"
+                     Margin="0,0,0,18"/>
+
+          <!-- Info table -->
+          <Border BorderBrush="#1C1C3C" BorderThickness="1" CornerRadius="5"
+                  Background="#08081E" Padding="16,13" Margin="0,0,0,16">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="80"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+
+              <!-- Python version -->
+              <TextBlock Text="Version" Foreground="#415A6E" FontSize="11"
+                         FontFamily="Segoe UI" Margin="0,0,0,8" VerticalAlignment="Top"/>
+              <TextBlock x:Name="VersionText" Grid.Column="1"
+                         Foreground="#D4AF37" FontSize="11" FontFamily="Segoe UI SemiBold"
+                         TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+              <!-- Install dir -->
+              <TextBlock Grid.Row="1" Text="Install dir" Foreground="#415A6E"
+                         FontSize="11" FontFamily="Segoe UI" Margin="0,0,0,8"
+                         VerticalAlignment="Top"/>
+              <TextBlock x:Name="DirText" Grid.Row="1" Grid.Column="1"
+                         Foreground="#A8C8E8" FontSize="11" FontFamily="Segoe UI"
+                         TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+              <!-- Scripts dir -->
+              <TextBlock Grid.Row="2" Text="Scripts dir" Foreground="#415A6E"
+                         FontSize="11" FontFamily="Segoe UI" VerticalAlignment="Top"/>
+              <TextBlock x:Name="ScriptsDirText" Grid.Row="2" Grid.Column="1"
+                         Foreground="#A8C8E8" FontSize="11" FontFamily="Segoe UI"
+                         TextWrapping="Wrap"/>
+            </Grid>
+          </Border>
+
+          <!-- Explanation -->
+          <TextBlock x:Name="ExplainText" FontSize="10.5" FontFamily="Segoe UI" TextWrapping="Wrap"
+                     Foreground="#364858" Margin="0,0,0,20"
+                     Text="Both directories will be prepended to your Windows user PATH so WRAITH can invoke Python and pip automatically. You can remove them at any time via System Properties &gt; Environment Variables."/>
+
+          <!-- Divider -->
+          <Border BorderBrush="#1A1A38" BorderThickness="0,1,0,0" Margin="0,0,0,16"/>
+
+          <!-- Checkbox — must be ticked to enable the confirm button -->
+          <CheckBox x:Name="ConfirmCheck" Margin="0,0,0,22"
+                    Checked="ConfirmCheck_Changed" Unchecked="ConfirmCheck_Changed">
+            <TextBlock x:Name="ConfirmCheckText"
+                       Text="I have reviewed the paths above and want to add them to my user PATH."
+                       FontFamily="Segoe UI" FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="#C8D8E8"/>
+          </CheckBox>
+
+          <!-- Buttons -->
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SkipBtn"
+                    Content="Skip for now"
+                    Width="108" Height="32" Margin="0,0,10,0"
+                    Click="SkipBtn_Click"
+                    Style="{StaticResource SpellButton}"
+                    Foreground="#415A6E" FontSize="11.5"/>
+            <Button x:Name="ConfirmBtn"
+                    Content="Add to PATH"
+                    Width="108" Height="32"
+                    Click="AddBtn_Click"
+                    Style="{StaticResource SpellButton}"
+                    IsEnabled="False"
+                    FontSize="11.5"/>
+          </StackPanel>
+
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

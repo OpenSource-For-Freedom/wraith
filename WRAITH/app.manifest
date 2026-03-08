@@ -2,7 +2,10 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="WRAITH.app"/>
 
-  <!-- UAC: require elevation — prompts the shield dialog on launch -->
+  <!-- UAC: always elevate so WRAITH has the privileges it needs for
+       registry reads, event-log access, and network scanning.
+       Path discovery also searches all user profiles so Python installed
+       under a non-admin account is still found. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">

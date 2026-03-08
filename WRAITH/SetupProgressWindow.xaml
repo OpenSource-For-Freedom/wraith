@@ -1,0 +1,130 @@
+<Window x:Class="WRAITH.SetupProgressWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WRAITH Setup"
+        Width="500" Height="Auto"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Background="Transparent">
+
+  <Grid>
+    <!-- Outer chrome -->
+    <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
+            Background="{StaticResource BrWindowBackground}">
+      <Border.Effect>
+        <DropShadowEffect Color="#4D2090" BlurRadius="30" ShadowDepth="0" Opacity="0.6"/>
+      </Border.Effect>
+
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="32"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Drag strip -->
+        <Border Grid.Row="0" Background="#05051A" CornerRadius="8,8,0,0"
+                MouseLeftButtonDown="TitleBar_MouseDown">
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
+            <Image Source="Assets/wraith.png" Width="16" Height="16"
+                   VerticalAlignment="Center" Margin="0,0,7,0"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="WRAITH - Setup" Foreground="#3E5568"
+                       FontSize="11" VerticalAlignment="Center"
+                       FontFamily="Segoe UI"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Body -->
+        <Grid Grid.Row="1">
+
+          <!-- Watermark -->
+          <Image Source="Assets/wraith.png" Opacity="0.055" Width="220"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 IsHitTestVisible="False"
+                 RenderOptions.BitmapScalingMode="HighQuality"/>
+
+          <StackPanel Margin="44,28,44,28" VerticalAlignment="Top">
+
+            <!-- WRAITH logotype -->
+            <TextBlock Text="WRAITH" FontSize="44" FontWeight="Bold"
+                       HorizontalAlignment="Center" FontFamily="Segoe UI">
+              <TextBlock.Foreground>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                  <GradientStop Color="#D4AF37" Offset="0"/>
+                  <GradientStop Color="#E8F4FF" Offset="0.5"/>
+                  <GradientStop Color="#D4AF37" Offset="1"/>
+                </LinearGradientBrush>
+              </TextBlock.Foreground>
+              <TextBlock.Effect>
+                <DropShadowEffect Color="#D4AF37" BlurRadius="14" ShadowDepth="0" Opacity="0.42"/>
+              </TextBlock.Effect>
+            </TextBlock>
+
+            <TextBlock Text="Expecto Patronum  -  First Run Setup"
+                       FontSize="11" Foreground="#415A6E"
+                       HorizontalAlignment="Center" Margin="0,5,0,0"
+                       FontFamily="Segoe UI"/>
+
+            <!-- Rule -->
+            <Border BorderBrush="#1C1C3C" BorderThickness="0,1,0,0" Margin="0,22,0,20"/>
+
+            <!-- Steps -->
+            <ItemsControl ItemsSource="{Binding Steps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid Margin="0,8">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="28"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Bullet}"
+                               Foreground="{Binding BulletColor}"
+                               FontSize="13" VerticalAlignment="Top"
+                               Margin="0,1,0,0"/>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="{Binding Name}"
+                                 Foreground="{Binding NameColor}"
+                                 FontSize="12.5" FontFamily="Segoe UI"/>
+                      <TextBlock Text="{Binding Detail}"
+                                 Foreground="#364858" FontSize="10"
+                                 FontFamily="Segoe UI"
+                                 Visibility="{Binding DetailVis}"
+                                 Margin="0,2,0,0"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Status line -->
+            <Border BorderBrush="#181838" BorderThickness="0,1,0,0"
+                    Margin="0,20,0,0" Padding="0,11,0,0">
+              <TextBlock Text="{Binding StatusLine}"
+                         Foreground="#36495A" FontSize="10"
+                         FontFamily="Segoe UI" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Cancel button — shown only when setup fails -->
+            <Button x:Name="CancelBtn"
+                    Content="Exit Setup"
+                    Visibility="Collapsed"
+                    Click="CancelBtn_Click"
+                    Margin="0,16,0,0"
+                    HorizontalAlignment="Center"
+                    Width="140" Height="32"
+                    FontFamily="Segoe UI" FontSize="12"
+                    Foreground="#C8D8E8"
+                    Background="#1A0A3A"
+                    BorderBrush="#FF2D55" BorderThickness="1"
+                    Cursor="Hand"/>
+
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

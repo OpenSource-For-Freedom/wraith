@@ -10,6 +10,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using WRAITH.Models;
+using WRAITH.Services;
 using WRAITH.ViewModels;
 
 namespace WRAITH;
@@ -144,16 +145,39 @@ public partial class MainWindow : Window
         // Pulse the status dot once
         PulseSpinnerDot();
 
+        // On software/partial-GPU hardware, strip every DropShadowEffect and
+        // BlurEffect from the window's visual tree immediately.  These run entirely
+        // on the CPU in the WPF software rendering pipeline and will visibly spike
+        // CPU usage — especially the outer chrome glow (BlurRadius 30) and the scan
+        // beam blur.  The animations further below are also throttled/skipped.
+        if (RenderQuality.IsLowTier)
+            RenderQuality.NullAllEffects(this);
+
         // Wire auto-scroll when new log entries arrive
         if (DataContext is MainViewModel vm)
         {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wraith-setup.log"),
+                $"[{DateTime.Now:HH:mm:ss.fff}] OnLoaded: DataContext is MainViewModel, calling InitializeAsync\n");
             vm.LogEntries.CollectionChanged += (_, _) =>
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
                     () => LogScroller.ScrollToBottom());
 
             // Kick off first-run dependency check / install in the background.
             // Progress and errors are streamed to the log panel automatically.
-            _ = vm.InitializeAsync();
+            _ = vm.InitializeAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    var msg = t.Exception?.Flatten().InnerException?.ToString() ?? "unknown";
+                    System.IO.File.WriteAllText(
+                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wraith-init-crash.txt"),
+                        msg);
+                    Dispatcher.Invoke(() => MessageBox.Show(
+                        $"Startup error:\n\n{t.Exception?.Flatten().InnerException?.Message}",
+                        "WRAITH - Startup Error", MessageBoxButton.OK, MessageBoxImage.Error));
+                }
+            }, System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
@@ -190,6 +214,35 @@ public partial class MainWindow : Window
                 vm.ScanPath = dlg.SelectedPath;
     }
 
+    // ── Drag-and-drop onto scan path ──────────────────────────────────
+    // Accepts a dragged file or folder and sets ScanPath accordingly.
+    // Dragging a file sets the path to that file's parent directory but
+    // also stores the file itself so a targeted single-file scan is possible.
+    private void TxtScanPath_DragOver(object s, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        e.Effects = e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)
+            ? System.Windows.DragDropEffects.Copy
+            : System.Windows.DragDropEffects.None;
+    }
+
+    private void TxtScanPath_Drop(object s, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)) return;
+        var dropped = e.Data.GetData(System.Windows.DataFormats.FileDrop) as string[];
+        var first = dropped?.FirstOrDefault();
+        if (first == null) return;
+
+        if (DataContext is not MainViewModel vm) return;
+
+        // If a file was dropped, use its containing directory as the scan root.
+        // If a directory was dropped, use it directly.
+        vm.ScanPath = System.IO.Directory.Exists(first)
+            ? first
+            : (System.IO.Path.GetDirectoryName(first) ?? first);
+    }
+
     // ─────────────────────────────────────────────────────────────────
     //  Patronus Spell Animation
     //  Three expanding glowing rings spray outward from centre while scan runs.
@@ -198,10 +251,13 @@ public partial class MainWindow : Window
     {
         _patronusBoards.Clear();
 
-        var rings = new[] { Ring1, Ring2, Ring3 };
-        var colours = new[] { "#60A8C8E8", "#50D4AF37", "#40A8C8E8" };
-        var delays  = new[] { 0.0, 0.6, 1.2 };
-        var durations = new[] { 2.8, 3.4, 4.0 };
+        // Low-tier machines (software / partial GPU): run a single ring at a
+        // capped frame-rate so we don't saturate the CPU during a scan.
+        bool fullFx   = !RenderQuality.IsLowTier;
+        var rings     = fullFx ? new[] { Ring1, Ring2, Ring3 } : new[] { Ring1 };
+        var colours   = fullFx ? new[] { "#60A8C8E8", "#50D4AF37", "#40A8C8E8" } : new[] { "#60A8C8E8" };
+        var delays    = fullFx ? new[] { 0.0, 0.6, 1.2 } : new[] { 0.0 };
+        var durations = fullFx ? new[] { 2.8, 3.4, 4.0 } : new[] { 2.8 };
 
         // Place rings at canvas centre
         PatronusCanvas.SizeChanged += RepositionRings;
@@ -212,6 +268,7 @@ public partial class MainWindow : Window
             var ring = rings[i];
             var sb   = BuildRingStoryboard(ring, colours[i], delays[i], durations[i]);
             sb.RepeatBehavior = RepeatBehavior.Forever;
+            if (!fullFx) Timeline.SetDesiredFrameRate(sb, 20);  // cap CPU cost
             _patronusBoards.Add(sb);
             sb.Begin(this, true);
         }
@@ -219,11 +276,13 @@ public partial class MainWindow : Window
         // Pulse spinner dot green
         AnimateSpinnerDot(Color.FromRgb(0xA8, 0xC8, 0xE8), true);
 
-        // Start ambient ghost wraith sweeps
-        StartGhostAnimation();
-
-        // Start header scan cutscene
-        StartHeaderScanAnimation();
+        // Ghost sweeps and header-scan cutscene are expensive (GIF cycling,
+        // per-tick element creation).  Skip them on low-tier hardware.
+        if (fullFx)
+        {
+            StartGhostAnimation();
+            StartHeaderScanAnimation();
+        }
     }
 
     private void StopPatronusAnimation()
@@ -300,6 +359,10 @@ public partial class MainWindow : Window
     // ══════════════════════════════════════════════════════════════════
     private void TriggerWooshAnimation()
     {
+        // 69 animated elements + a shockwave ring — too expensive for a CPU-only
+        // or forced-software-render machine.  Skip the entire burst.
+        if (RenderQuality.IsLowTier) return;
+
         WooshCanvas.Children.Clear();
         WooshCanvas.Visibility = Visibility.Visible;
 
@@ -668,7 +731,7 @@ public partial class MainWindow : Window
                 Source              = _gifFrames[0],
                 Stretch             = Stretch.Uniform,
                 RenderTransform     = imgXform,
-                Effect              = new DropShadowEffect
+                Effect = RenderQuality.IsLowTier ? null : new DropShadowEffect
                 {
                     Color       = gc,
                     BlurRadius  = 18 * scale,
@@ -736,7 +799,8 @@ public partial class MainWindow : Window
             {
                 Data = geo, Fill = fill,
                 RenderTransform = ltr ? Transform.Identity : new ScaleTransform(-1, 1, 55 * scale, 0),
-                Effect = new DropShadowEffect { Color = gc, BlurRadius = 16 * scale, ShadowDepth = 0, Opacity = 0.80 }
+                Effect = RenderQuality.IsLowTier ? null
+                    : new DropShadowEffect { Color = gc, BlurRadius = 16 * scale, ShadowDepth = 0, Opacity = 0.80 }
             });
         }
 
@@ -1038,7 +1102,8 @@ public partial class MainWindow : Window
             Data = geo, Fill = fill,
             Stroke = new SolidColorBrush(Color.FromArgb(35, gc.R, gc.G, gc.B)),
             StrokeThickness = 0.6, RenderTransform = bodyTx,
-            Effect = new DropShadowEffect { Color = gc, BlurRadius = 12 * scale, ShadowDepth = 0, Opacity = 0.70 }
+            Effect = RenderQuality.IsLowTier ? null
+                : new DropShadowEffect { Color = gc, BlurRadius = 12 * scale, ShadowDepth = 0, Opacity = 0.70 }
         };
 
         var container = new Canvas { Width = bW * 2, Height = hH, Opacity = 0 };

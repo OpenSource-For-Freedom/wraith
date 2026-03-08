@@ -204,23 +204,45 @@ jobs:
           set REQ=%ROOT%scanner\requirements.txt
           set EXE=%ROOT%WRAITH.exe
 
+          :: ── Detect Windows version → choose most secure Python ──────────────
+          set WIN_BUILD_NUM=19041
+          for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber 2^>nul ^| findstr /i "CurrentBuildNumber"') do set WIN_BUILD_NUM=%%a
+          if %WIN_BUILD_NUM% GEQ 22000 (
+              echo  [OS] Windows 11  Build %WIN_BUILD_NUM%  --  Python 3.14 selected
+              set PY_WINGET=Python.Python.3.14
+              set PY_WINGET_FB=Python.Python.3.13
+              set PY_VER=3.14
+              set PY_URL=https://www.python.org/ftp/python/3.14.0/python-3.14.0-amd64.exe
+          ) else (
+              echo  [OS] Windows 10  Build %WIN_BUILD_NUM%  --  Python 3.12 selected
+              set PY_WINGET=Python.Python.3.12
+              set PY_WINGET_FB=Python.Python.3.11
+              set PY_VER=3.12
+              set PY_URL=https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe
+          )
+
           :: ── Step 1: Verify / auto-install Python ──────────────────────────
           echo [1/3] Checking Python...
           where python >nul 2>&1
           if %ERRORLEVEL% NEQ 0 (
-              echo  Python not found. Installing automatically...
+              echo  Python not found. Installing Python %PY_VER% automatically...
               echo.
 
               :: Try winget first (built into Windows 10 1709+ / Windows 11)
               where winget >nul 2>&1
-              if %ERRORLEVEL% EQU 0 (
-                  echo  Using winget to install Python 3.11...
-                  winget install --id Python.Python.3.11 --source winget ^^
+              if !ERRORLEVEL! EQU 0 (
+                  echo  Using winget to install %PY_WINGET%...
+                  winget install --id %PY_WINGET% --source winget ^^
                     --silent --accept-package-agreements --accept-source-agreements
+                  if !ERRORLEVEL! NEQ 0 (
+                      echo  Trying fallback %PY_WINGET_FB%...
+                      winget install --id %PY_WINGET_FB% --source winget ^^
+                        --silent --accept-package-agreements --accept-source-agreements
+                  )
               ) else (
-                  echo  winget not available. Downloading Python 3.11 installer...
+                  echo  winget not available. Downloading Python %PY_VER% installer...
                   powershell -NoProfile -Command ^^
-                    "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-setup.exe'; Write-Host '  Download complete.'"
+                    "Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%TEMP%\python-setup.exe'; Write-Host '  Download complete.'"
                   echo  Running silent installer (this may take a minute)...
                   "%TEMP%\python-setup.exe" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
                   del /f /q "%TEMP%\python-setup.exe" >nul 2>&1
@@ -231,7 +253,7 @@ jobs:
                 "[Environment]::GetEnvironmentVariable('PATH','User')"') do set "PATH=%%P;%PATH%"
 
               where python >nul 2>&1
-              if %ERRORLEVEL% NEQ 0 (
+              if !ERRORLEVEL! NEQ 0 (
                   echo.
                   echo  Python was installed but is not on PATH yet.
                   echo  Please close this window and run START.bat again.
@@ -242,6 +264,10 @@ jobs:
           )
           python --version
           echo  Python OK.
+
+          :: ── Register Python in user PATH permanently (idempotent) ───────────
+          for /f "delims=" %%P in ('python -c "import os,sys; print(os.path.dirname(sys.executable))" 2^>nul') do set "PY_INSTALL_DIR=%%P"
+          if defined PY_INSTALL_DIR powershell -NoProfile -Command "$d='%PY_INSTALL_DIR%'; $s=$d+'\Scripts'; $p=[Environment]::GetEnvironmentVariable('PATH','User'); if (($p -split ';') -notcontains $d) { [Environment]::SetEnvironmentVariable('PATH', $d+';'+$s+';'+$p, 'User') }" >nul 2>&1
 
           :: ── Step 2: Python venv + dependencies ────────────────────────────
           echo.
@@ -326,18 +352,6 @@ jobs:
           Write-Host "Velopack output:"
           Get-ChildItem ./velopack-out | Select-Object Name, Length
 
-      - name: Upload Velopack assets to release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $v = "${{ steps.ver.outputs.version }}"
-          vpk upload github `
-            --repoUrl https://github.com/OpenSource-For-Freedom/wraith `
-            --token $env:GH_TOKEN `
-            --tag $v `
-            --outputDir ./velopack-out
-
       - name: Create ZIP
         shell: pwsh
         run: |
@@ -353,9 +367,9 @@ jobs:
           name:                  WRAITH
           draft:                 false
           prerelease:            false
+          make_latest:           "true"
           files: |
             ${{ steps.ver.outputs.zip }}
-            velopack-out/WRAITH-*-win-Setup.exe
             sbom-dotnet.spdx.json
             sbom-dotnet.cyclonedx.json
             sbom-scanner.spdx.json
@@ -371,7 +385,8 @@ jobs:
             3. Double-click **`START.bat`**
 
             `START.bat` will:
-            - **Auto-install Python 3.11** if not present (via winget, or silent installer download)
+            - **Auto-install the most secure Python for your OS** — Python 3.14 on Windows 11, Python 3.12 on Windows 10 (via winget or direct download)
+            - Add Python to your PATH permanently
             - Create a local `.venv` and install all scan dependencies
             - Launch **WRAITH.exe** — no .NET SDK required (runtime is bundled)
 
@@ -381,7 +396,7 @@ jobs:
             | | |
             |---|---|
             | OS | Windows 10 / 11 x64 |
-            | Python | Auto-installed by START.bat if missing |
+            | Python | Auto-installed by START.bat (3.14 on Win 11 · 3.12 on Win 10) |
             | .NET runtime | **Not needed** — bundled inside WRAITH.exe |
 
             ### Headless scan (no GUI)
@@ -389,3 +404,15 @@ jobs:
             .\quick-scan.ps1
             .\quick-scan.ps1 -Hours 168 -OutPath C:\report.json
             ```
+
+      - name: Upload Velopack assets to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          vpk upload github `
+            --repoUrl https://github.com/OpenSource-For-Freedom/wraith `
+            --token $env:GH_TOKEN `
+            --tag $v `
+            --outputDir ./velopack-out

@@ -78,10 +78,26 @@ echo.
 echo [5/5] Building WRAITH (.NET 8 WPF)...
 where dotnet >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo  ERROR: .NET SDK not found.
-    echo  Install .NET 8 SDK from: https://dotnet.microsoft.com/download/dotnet/8.0
-    pause
-    exit /b 1
+    echo  .NET 8 SDK not found. Installing via winget...
+    where winget >nul 2>&1
+    if %ERRORLEVEL% EQU 0 (
+        winget install --id Microsoft.DotNet.SDK.8 --silent --accept-package-agreements --accept-source-agreements
+        :: Reload PATH so dotnet is visible without reopening the shell
+        for /f "tokens=*" %%P in ('powershell -NoProfile -Command "[Environment]::GetEnvironmentVariable('PATH','Machine')"') do set "PATH=%%P;%PATH%"
+        if not exist "C:\Program Files\dotnet\dotnet.exe" (
+            echo  ERROR: .NET 8 SDK install failed.
+            echo  Install manually: https://dotnet.microsoft.com/download/dotnet/8.0
+            pause
+            exit /b 1
+        )
+        set "PATH=C:\Program Files\dotnet;%PATH%"
+        echo  .NET 8 SDK installed.
+    ) else (
+        echo  ERROR: winget not available and .NET SDK not found.
+        echo  Install .NET 8 SDK from: https://dotnet.microsoft.com/download/dotnet/8.0
+        pause
+        exit /b 1
+    )
 )
 
 dotnet restore "%SCRIPTDIR%ThreatScanner.sln" --nologo

@@ -123,10 +123,40 @@ foreach ($candidate in @("python", "python3", "py")) {
 }
 
 if (-not $pythonExe) {
-    Write-Host "  ERROR: Python 3 not found on PATH." -ForegroundColor Red
-    Write-Host "  Install from https://python.org -- check Add to PATH during install." -ForegroundColor Yellow
-    Read-Host "  Press Enter to exit"
-    exit 1
+    Write-Host "  Python not found. Attempting auto-install via winget..." -ForegroundColor Yellow
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($winget) {
+        # Detect OS build to choose the most secure compatible Python
+        $buildNum = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber -as [int]
+        $pyId = if ($buildNum -ge 22000) { 'Python.Python.3.14' } else { 'Python.Python.3.12' }
+        $pyIdFb = if ($buildNum -ge 22000) { 'Python.Python.3.13' } else { 'Python.Python.3.11' }
+        Write-Host "  Installing $pyId (Windows build $buildNum)..." -ForegroundColor Yellow
+        winget install --id $pyId --silent --scope user --accept-package-agreements --accept-source-agreements
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "  Trying fallback $pyIdFb..." -ForegroundColor Yellow
+            winget install --id $pyIdFb --silent --scope user --accept-package-agreements --accept-source-agreements
+        }
+        # Refresh PATH so newly installed Python is visible
+        $env:PATH = [Environment]::GetEnvironmentVariable('PATH','User') + ';' +
+                    [Environment]::GetEnvironmentVariable('PATH','Machine')
+        Start-Sleep -Seconds 2
+        foreach ($candidate in @('python', 'python3')) {
+            try {
+                $ver = & $candidate --version 2>&1
+                if ($LASTEXITCODE -eq 0 -and "$ver" -match 'Python 3') {
+                    $pythonExe = $candidate
+                    Write-Host "  Python installed: $ver" -ForegroundColor Green
+                    break
+                }
+            } catch {}
+        }
+    }
+    if (-not $pythonExe) {
+        Write-Host "  ERROR: Python could not be installed automatically." -ForegroundColor Red
+        Write-Host "  Install from https://python.org -- check 'Add Python to PATH'." -ForegroundColor Yellow
+        Read-Host "  Press Enter to exit"
+        exit 1
+    }
 }
 
 # Step 2: Create / reuse venv
@@ -170,9 +200,26 @@ if ($pipExit -ne 0) {
 Banner "Step 3/5 - Building WRAITH"
 
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-    Write-Host "  ERROR: dotnet SDK not found. Install from https://dot.net" -ForegroundColor Red
-    Read-Host "  Press Enter to exit"
-    exit 1
+    Write-Host "  .NET 8 SDK not found. Installing via winget..." -ForegroundColor Yellow
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if ($winget) {
+        winget install --id Microsoft.DotNet.SDK.8 --silent --accept-package-agreements --accept-source-agreements
+        # Refresh PATH in this session — dotnet installs to C:\Program Files\dotnet
+        $env:PATH = [Environment]::GetEnvironmentVariable('PATH','Machine') + ';' +
+                    [Environment]::GetEnvironmentVariable('PATH','User')
+        if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+            # Winget may not have updated Machine PATH yet; probe the known default location
+            $dotnetExe = 'C:\Program Files\dotnet\dotnet.exe'
+            if (Test-Path $dotnetExe) { $env:PATH = "C:\Program Files\dotnet;$env:PATH" }
+        }
+    }
+    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        Write-Host "  ERROR: .NET 8 SDK could not be installed automatically." -ForegroundColor Red
+        Write-Host "  Install manually from https://dotnet.microsoft.com/download/dotnet/8.0" -ForegroundColor Yellow
+        Read-Host "  Press Enter to exit"
+        exit 1
+    }
+    Write-Host "  .NET 8 SDK installed successfully." -ForegroundColor Green
 }
 
 Write-Host "  Running dotnet build (Release)..." -ForegroundColor Yellow

@@ -338,7 +338,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         RestartToUpdateCommand = new RelayCommand(_ =>
         {
             var confirm = MessageBox.Show(
-                $"⚠  WRAITH {UpdateVersionText} has been downloaded.\n\nRestart now to apply the update?",
+                $"[!] WRAITH {UpdateVersionText} has been downloaded.\n\nRestart now to apply the update?",
                 "WRAITH — Update Ready",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -367,25 +367,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     public async Task InitializeAsync()
     {
-        var baseDir      = BootstrapService.ResolveBaseDir();
-        var bootstrapper = new BootstrapService();
-        bootstrapper.LogMessage += msg => AppendLog(msg);
-        bootstrapper.OsDetected  += os  => OsDescription = os;
+        var baseDir  = BootstrapService.ResolveBaseDir();
+        var diagFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "wraith-setup.log");
+        System.IO.File.AppendAllText(diagFile, $"[{DateTime.Now:HH:mm:ss.fff}] MainWindow ready, baseDir={baseDir}\n");
 
         CurrentPhase = "Checking environment...";
         ThreatLevel  = "UNKNOWN";
 
+        // Setup completed before this window opened (App.xaml.cs ran setup-only window).
+        // EnsureDependenciesAsync takes the fast path: reads wraith.env.json and returns immediately.
+        var bootstrapper = new BootstrapService();
+        bootstrapper.LogMessage += msg => AppendLog(msg);
+        bootstrapper.OsDetected += os  => OsDescription = os;
+
         var pythonPath = await bootstrapper.EnsureDependenciesAsync(baseDir);
 
-        if (pythonPath == null)
-        {
-            CurrentPhase = "Setup required — see log for instructions";
-            ThreatLevel  = "UNKNOWN";
-        }
-        else
-        {
-            CurrentPhase = "Awaiting your command...";
-        }
+        CurrentPhase = pythonPath == null
+            ? "Setup required — see log for instructions"
+            : "Awaiting your command...";
         IsReady = true;
     }
 
