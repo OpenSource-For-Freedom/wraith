@@ -292,6 +292,34 @@ jobs:
           $lines = $bat -split "`n" | ForEach-Object { $_ -replace '^\s{10}', '' }
           $lines -join "`r`n" | Set-Content ./release/START.bat -Encoding ASCII
 
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Package with Velopack
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.version }}".TrimStart("v")
+          vpk pack `
+            --packId WRAITH `
+            --packVersion $v `
+            --packDir ./publish `
+            --mainExe WRAITH.exe `
+            --outputDir ./velopack-out
+          Write-Host "Velopack output:"
+          Get-ChildItem ./velopack-out | Select-Object Name, Length
+
+      - name: Upload Velopack assets to release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $v = "${{ steps.ver.outputs.version }}"
+          vpk upload github `
+            --repoUrl https://github.com/OpenSource-For-Freedom/wraith `
+            --token $env:GH_TOKEN `
+            --tag $v `
+            --outputDir ./velopack-out
+
       - name: Create ZIP
         shell: pwsh
         run: |
@@ -309,6 +337,7 @@ jobs:
           prerelease:            false
           files: |
             ${{ steps.ver.outputs.zip }}
+            velopack-out/WRAITH-*-win-Setup.exe
             sbom-dotnet.spdx.json
             sbom-dotnet.cyclonedx.json
             sbom-scanner.spdx.json

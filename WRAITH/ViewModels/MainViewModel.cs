@@ -261,6 +261,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         set { _liveFilter = value; OnPropertyChanged(); ApplyFilter(); }
     }
 
+    // ── Update notification ────────────────────────────────────────────
+    private bool   _updateAvailable;
+    private string _updateVersionText = "";
+
+    public bool UpdateAvailable
+    {
+        get => _updateAvailable;
+        private set { _updateAvailable = value; OnPropertyChanged(); }
+    }
+
+    public string UpdateVersionText
+    {
+        get => _updateVersionText;
+        private set { _updateVersionText = value; OnPropertyChanged(); }
+    }
+
     // ── Commands ───────────────────────────────────────────────────────
     public ICommand StartScanCommand   { get; }
     public ICommand StopScanCommand    { get; }
@@ -276,6 +292,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand InspectFindingCommand { get; }
     public ICommand RefreshStatusCommand { get; }
     public ICommand TraceOriginCommand { get; }
+    public ICommand RestartToUpdateCommand { get; }
 
     // ── Constructor ───────────────────────────────────────────────────
     public MainViewModel()
@@ -317,6 +334,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         });
         TraceOriginCommand = new AsyncRelayCommand<ThreatFinding>(
             f => TraceOriginAsync(f ?? _selectedFinding));
+
+        RestartToUpdateCommand = new RelayCommand(_ =>
+        {
+            var confirm = MessageBox.Show(
+                $"⚠  WRAITH {UpdateVersionText} has been downloaded.\n\nRestart now to apply the update?",
+                "WRAITH — Update Ready",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.Yes);
+            if (confirm == MessageBoxResult.Yes)
+                UpdateService.ApplyAndRestart();
+        });
+
+        UpdateService.UpdateDownloaded += version =>
+        {
+            UpdateAvailable     = true;
+            UpdateVersionText   = $"v{version}";
+        };
 
         // Drain pending findings/logs on the UI thread every 150 ms
         _flushTimer = new DispatcherTimer(DispatcherPriority.Background)

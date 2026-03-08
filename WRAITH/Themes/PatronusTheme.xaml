@@ -172,6 +172,40 @@
     </Setter>
   </Style>
 
+  <!-- Amber warning button — used for the update-ready notification in the title bar -->
+  <Style x:Key="WarningButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
+    <Setter Property="Background"   Value="#1AFF9500"/>
+    <Setter Property="BorderBrush"  Value="#FF9500"/>
+    <Setter Property="Foreground"   Value="#FF9500"/>
+    <Setter Property="FontSize"     Value="10"/>
+    <Setter Property="Padding"      Value="10,0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="3"
+                  Padding="{TemplateBinding Padding}">
+            <Border.Effect>
+              <DropShadowEffect x:Name="BtnGlow" Color="#FF9500" BlurRadius="8" ShadowDepth="0" Opacity="0.7"/>
+            </Border.Effect>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#33FF9500"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#0DFF9500"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
     <Setter Property="Background"  Value="Transparent"/>
     <Setter Property="BorderBrush" Value="{StaticResource BrPanelBorder}"/>

@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Threading;
 using System.Threading;
+using Velopack;
+using WRAITH.Services;
 
 namespace WRAITH;
 
@@ -11,6 +13,10 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // ── Velopack bootstrap — must be called before anything else ─────────
+        // Handles installer hooks (install/uninstall/update) and exits early if needed
+        VelopackApp.Build().Run();
+
         // ── Single-instance enforcement ──────────────────────────────────
         _singleInstanceMutex = new Mutex(initiallyOwned: true,
             name: "Global\\WRAITH_SingleInstance_4A2F9C1B",
@@ -27,6 +33,10 @@ public partial class App : Application
 
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         base.OnStartup(e);
+
+        // ── Check for updates once the UI is fully idle ───────────────────
+        Dispatcher.BeginInvoke(async () => await UpdateService.CheckForUpdatesAsync(),
+            DispatcherPriority.ApplicationIdle);
 
         DispatcherUnhandledException += (_, ex) =>
         {

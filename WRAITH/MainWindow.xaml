@@ -63,6 +63,15 @@
                        FontSize="11" FontWeight="SemiBold"
                        Foreground="{StaticResource BrGoldDim}"/>
           </StackPanel>
+          <!-- Update-ready notification (hidden until an update is downloaded) -->
+          <Button HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Height="22"
+                  Style="{StaticResource WarningButton}"
+                  Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}"
+                  Command="{Binding RestartToUpdateCommand}"
+                  Content="⚠  UPDATE READY — RESTART TO APPLY"
+                  ToolTip="An update has been downloaded. Click to confirm restart and apply."/>
+
           <!-- Window controls -->
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,4,0">
             <Button Content="─" Width="28" Height="24" FontSize="14" FontWeight="Bold"
