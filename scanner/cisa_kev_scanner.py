@@ -31,7 +31,9 @@ except ImportError:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
-KEV_CACHE_FILE = Path(os.environ.get("TEMP", "C:\\Temp")) / "wraith_kev_cache.json"  # lgtm[py/path-injection]
+KEV_CACHE_FILE = (
+    Path(os.environ.get("TEMP", "C:\\Temp")) / "wraith_kev_cache.json"
+)  # lgtm[py/path-injection]
 CACHE_MAX_AGE = timedelta(hours=12)  # Re-download if cache older than 12 h
 
 # How far back to look for "recently added" KEV entries when no patch check exists
@@ -239,7 +241,9 @@ def _load_kev_catalog() -> List[Dict]:
         age = datetime.now() - datetime.fromtimestamp(KEV_CACHE_FILE.stat().st_mtime)
         if age < CACHE_MAX_AGE:
             try:
-                with open(KEV_CACHE_FILE, encoding="utf-8") as f:  # lgtm[py/path-injection]
+                with open(
+                    KEV_CACHE_FILE, encoding="utf-8"
+                ) as f:  # lgtm[py/path-injection]
                     data = json.load(f)
                     log(
                         f"Loaded KEV catalog from cache ({len(data.get('vulnerabilities',[]))} entries)"
@@ -262,7 +266,9 @@ def _load_kev_catalog() -> List[Dict]:
         # Save cache
         try:
             KEV_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(KEV_CACHE_FILE, "w", encoding="utf-8") as f:  # lgtm[py/path-injection]
+            with open(
+                KEV_CACHE_FILE, "w", encoding="utf-8"
+            ) as f:  # lgtm[py/path-injection]
                 json.dump(data, f)
         except Exception as e:
             log(f"Cache write failed: {e}")
@@ -273,7 +279,9 @@ def _load_kev_catalog() -> List[Dict]:
         if KEV_CACHE_FILE.exists():
             log("Using stale cache as fallback")
             try:
-                with open(KEV_CACHE_FILE, encoding="utf-8") as f:  # lgtm[py/path-injection]
+                with open(
+                    KEV_CACHE_FILE, encoding="utf-8"
+                ) as f:  # lgtm[py/path-injection]
                     return json.load(f).get("vulnerabilities", [])
             except Exception:
                 pass
@@ -491,7 +499,10 @@ def _msrc_url(entry: Dict) -> str:
         p = part.strip()
         try:
             parsed = urllib.parse.urlparse(p)
-            if parsed.scheme in ("https", "http") and parsed.netloc == "msrc.microsoft.com":
+            if (
+                parsed.scheme in ("https", "http")
+                and parsed.netloc == "msrc.microsoft.com"
+            ):
                 return p
         except Exception:
             pass
