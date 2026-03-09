@@ -147,7 +147,7 @@ if "--live" in sys.argv:
 
     api_key = _load_api_key()
     if api_key:
-        print(f"\n  Auth-Key: configured ({api_key[:6]}...)")
+        print("\n  Auth-Key: configured")
     else:
         print("\n  Auth-Key: NOT configured — set abuse_ch_api_key in wraith.env.json")
         print(

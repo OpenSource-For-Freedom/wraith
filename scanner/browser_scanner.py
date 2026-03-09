@@ -138,8 +138,8 @@ def _run_ps(cmd: str, timeout: int = 20) -> str:
 def _get_extension_dirs() -> List[Path]:
     """Return paths to Chrome, Edge, and Brave extension dirs for all profiles."""
     dirs = []
-    local = Path(os.environ.get("LOCALAPPDATA", ""))
-    roaming = Path(os.environ.get("APPDATA", ""))
+    local = Path(os.environ.get("LOCALAPPDATA", ""))  # lgtm[py/path-injection]
+    roaming = Path(os.environ.get("APPDATA", ""))  # lgtm[py/path-injection]
 
     browser_roots = [
         local / "Google" / "Chrome" / "User Data",

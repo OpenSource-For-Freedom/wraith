@@ -11,103 +11,74 @@
   ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝   ╚═╝   ╚═╝  ╚═╝
 </pre>
 
-**Windows Runtime Analysis & Intrusion Threat Hunter**
-**With a** ![Unix](https://img.shields.io/badge/Unix-backbone-2ea44f) **and OpenSource data retrieval system** · *Expecto Patronum*
+**Windows Runtime Analysis & Intrusion Threat Hunter**  
+*Unix backbone · OpenSource intelligence pipeline · Expecto Patronum*
 
 [![Deploy](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml/badge.svg)](https://github.com/OpenSource-For-Freedom/wraith/actions/workflows/deploy.yml)
 [![Windows 10/11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D6?logo=windows)](docs/windows10.md)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download/dotnet/8.0)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Hits](https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH.svg?style=flat-square)](https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH)
 
-A native Windows threat-hunting application that orchestrates 14 scan modules across YARA, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard.
-This tools stands eith **Defender** and can supply **Sentinal** true event alerts and sources found through the OpenSource pipeline. 
+A native Windows threat-hunting application that orchestrates **14 scan modules** across YARA signatures, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard. WRAITH runs alongside **Windows Defender** and feeds **Microsoft Sentinel** with true-positive event sources via the OpenSource intelligence pipeline.
+
+[Installation](#installation) · [Scan Modules](#scan-modules) · [Usage](#usage) · [Output](#output) · [Docs](docs/)
+
 </div>
 
-
-<a href="https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH">
-  <img alt="clicks" src="https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH.svg?style=flat-square" />
+---
 
 ## Installation
+
 - Install from [release](https://github.com/OpenSource-For-Freedom/wraith/releases) packaged source.
 
 ---
 
-## Documentation
-
-| Guide | Description |
-|---|---|
-| [Windows 10 Setup](docs/windows10.md) | Win10 build compatibility, winget fallback, audit policy, known limitations |
-| [Scan Modules](#scan-modules) | What each of the 14 modules hunts |
-| [Usage](#usage) | GUI, headless, and scripted usage |
-| [Output](#output) | Report formats and severity tiers |
-
-### Library & Framework References
-
-| Library | Purpose | Docs |
-|---|---|---|
-| .NET 8 WPF | GUI framework | [docs.microsoft.com/wpf](https://docs.microsoft.com/en-us/dotnet/desktop/wpf/) |
-| YARA 4.x | Signature engine | [virustotal.github.io/yara](https://virustotal.github.io/yara/) |
-| yara-python | Python YARA bindings | [pypi: yara-python](https://pypi.org/project/yara-python/) |
-| pywin32 | Win32 API access | [pypi: pywin32](https://pypi.org/project/pywin32/) |
-| psutil | Process & network info | [psutil.readthedocs.io](https://psutil.readthedocs.io/) |
-| requests | CISA KEV API | [docs.python-requests.org](https://docs.python-requests.org/) |
-| python-magic | File entropy & MIME | [pypi: python-magic](https://pypi.org/project/python-magic/) |
-| CIM / WMI | Service & process enumeration | [Win32 Provider](https://docs.microsoft.com/en-us/windows/win32/cimwin32prov/win32-provider) |
-| Windows Event Log | Event parsing | [Get-WinEvent](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent) |
-| CISA KEV | Known Exploited Vulnerabilities | [cisa.gov/kev](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) |
-
----
-
-
-## UI Walkthrough
+## Screenshots
 
 <p align="center">
   <img src="WRAITH/Assets/wraith.gif" alt="WRAITH scan animation" width="800"/>
 </p>
 
-### Live scan in action
 <p align="center">
   <img src="WRAITH/Assets/wraith_readme_900.webp" alt="WRAITH live scan" width="800"/>
 </p>
 
-Findings surface in real time as each of the 14 modules runs — YARA matches, heuristic hits, persistence entries, and process anomalies all stream into the same feed ranked by severity.
+Findings surface in real time as each of the 14 modules completes — YARA matches, heuristic hits, persistence entries, and process anomalies stream into the same feed ranked by severity.
 
----
+<details>
+<summary>More screenshots</summary>
 
-### Dashboard — live threat feed
+### Dashboard
+
 <p align="center">
-  <img src="WRAITH/Assets/screenshot.png" alt="WRAITH dashboard showing live threat findings" width="800"/>
+  <img src="WRAITH/Assets/screenshot.png" alt="WRAITH dashboard" width="800"/>
 </p>
 
-Findings stream in as each module completes. Every row shows severity, module, finding name, path/process, and entropy score. Click any row to expand details. Use the toolbar to **kill a live process**, **export the report**, or **clear the list**.
+Every row shows severity, module, finding name, path/process, and entropy score. Click any row for details. Use the toolbar to **kill a live process**, **export the report**, or **clear the list**.
 
----
+### Severity filter
 
-### Severity filter & scan controls
 <p align="center">
-  <img src="WRAITH/Assets/dropdown.png" alt="WRAITH severity filter dropdown" width="800"/>
+  <img src="WRAITH/Assets/dropdown.png" alt="WRAITH severity filter" width="800"/>
 </p>
 
-Filter the feed by severity (CRITICAL → INFO) in real time without re-running the scan. Scan-root, look-back window, and scan mode are all set before clicking **EXPECTO PATRONUM**.
+Filter by severity (CRITICAL → INFO) in real time without re-running. Scan-root, look-back window, and scan mode are all set before clicking **EXPECTO PATRONUM**.
 
----
+### Full results & process kill
 
-### Full results view
 <p align="center">
-  <img src="WRAITH/Assets/screenshot_2.png" alt="WRAITH full results view" width="800"/>
+  <img src="WRAITH/Assets/screenshot_2.png" alt="WRAITH full results" width="800"/>
 </p>
 
-After the scan completes the summary bar shows total counts per severity tier. Export to **JSON**, **CSV**, or a self-contained **HTML** report from the toolbar at any time.
-
----
-
-### Killing a live process
 <p align="center">
-  <img src="WRAITH/Assets/kil.png" alt="WRAITH kill process dialog" width="800"/>
+  <img src="WRAITH/Assets/kil.png" alt="WRAITH kill process" width="800"/>
 </p>
 
-Select any finding tied to a running process, then hit **Kill Process** in the toolbar. WRAITH confirms the target PID and name before terminating — no silent kills. The row updates immediately to reflect the process is gone.
+After the scan the summary bar shows counts per severity tier. Select any finding tied to a live process and hit **Kill Process** — WRAITH confirms PID and name before terminating. No silent kills.
+
+</details>
 
 ---
 
@@ -122,7 +93,7 @@ Select any finding tied to a running process, then hit **Kill Process** in the t
 
 ---
 
-## Quick Start for Development 
+## Quick Start
 
 ```bat
 git clone https://github.com/YOUR_USERNAME/wraith.git
@@ -130,7 +101,7 @@ cd wraith
 LAUNCH.bat
 ```
 
-`LAUNCH.bat` will on first run:
+`LAUNCH.bat` on first run will:
 1. Create a Python virtual environment (`.venv/`)
 2. Install all Python dependencies
 3. Build the .NET 8 WPF app (Release)
@@ -215,6 +186,24 @@ WRAITH.ps1               Master launcher / venv bootstrap
 LAUNCH.bat               Entry point
 SETUP.bat                One-time dependency installer
 ```
+
+<details>
+<summary>Library & framework references</summary>
+
+| Library | Purpose | Docs |
+|---|---|---|
+| .NET 8 WPF | GUI framework | [docs.microsoft.com/wpf](https://docs.microsoft.com/en-us/dotnet/desktop/wpf/) |
+| YARA 4.x | Signature engine | [virustotal.github.io/yara](https://virustotal.github.io/yara/) |
+| yara-python | Python YARA bindings | [pypi: yara-python](https://pypi.org/project/yara-python/) |
+| pywin32 | Win32 API access | [pypi: pywin32](https://pypi.org/project/pywin32/) |
+| psutil | Process & network info | [psutil.readthedocs.io](https://psutil.readthedocs.io/) |
+| requests | CISA KEV API | [docs.python-requests.org](https://docs.python-requests.org/) |
+| python-magic | File entropy & MIME | [pypi: python-magic](https://pypi.org/project/python-magic/) |
+| CIM / WMI | Service & process enumeration | [Win32 Provider](https://docs.microsoft.com/en-us/windows/win32/cimwin32prov/win32-provider) |
+| Windows Event Log | Event parsing | [Get-WinEvent](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.diagnostics/get-winevent) |
+| CISA KEV | Known Exploited Vulnerabilities | [cisa.gov/kev](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) |
+
+</details>
 
 ---
 

@@ -5,6 +5,8 @@ on:
     branches: [ '**' ] 
   pull_request: 
     branches: [ main ]
+permissions:
+  contents: read
 jobs:
   black:  
     runs-on: ubuntu-latest

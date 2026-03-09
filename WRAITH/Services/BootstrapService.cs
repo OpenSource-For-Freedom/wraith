@@ -150,7 +150,7 @@ public sealed class BootstrapService
         if (!System.IO.File.Exists(venvPython))
         {
             Log("Creating virtual environment...");
-            await RunAsync(pythonExe, $"-m venv \"{venvDir}\"", null, ct);
+            await RunAsync(pythonExe, ["-m", "venv", venvDir], null, ct);
         }
 
         if (System.IO.File.Exists(venvPython))
@@ -165,7 +165,7 @@ public sealed class BootstrapService
         }
 
         // ── 3. Upgrade pip silently ──────────────────────────────────────
-        await RunAsync(pythonExe, "-m pip install --upgrade pip --quiet", null, ct);
+        await RunAsync(pythonExe, ["-m", "pip", "install", "--upgrade", "pip", "--quiet"], null, ct);
 
         // ── 4. Install scanner requirements ─────────────────────────────
         // Walk up from baseDir to find scanner/ — handles debug builds where
@@ -182,7 +182,7 @@ public sealed class BootstrapService
             using var pipCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             pipCts.CancelAfter(TimeSpan.FromMinutes(3));
             var (code, stderr) = await RunAsync(pythonExe,
-                $"-m pip install --quiet --prefer-binary -r \"{reqFile}\"", null, pipCts.Token);
+                ["-m", "pip", "install", "--quiet", "--prefer-binary", "-r", reqFile], null, pipCts.Token);
             if (code != 0)
             {
                 ReportStep(4, SetupStepStatus.Error, "Some packages failed — YARA may be unavailable");
@@ -481,8 +481,8 @@ public sealed class BootstrapService
         {
             Log($"Installing {id} via winget...");
             var (code, _) = await RunAsync("winget",
-                $"install --id {id} --silent --scope user " +
-                "--accept-package-agreements --accept-source-agreements", null, ct);
+                ["install", "--id", id, "--silent", "--scope", "user",
+                 "--accept-package-agreements", "--accept-source-agreements"], null, ct);
 
             if (code == 0 || code == -1978335189 /* WINGET_ERROR_ALREADY_INSTALLED */)
             {
@@ -596,11 +596,11 @@ public sealed class BootstrapService
 
     /// <summary>Runs a process, captures exit code and stderr.</summary>
     private static async Task<(int code, string stderr)> RunAsync(
-        string exe, string args, string? workDir, CancellationToken ct)
+        string exe, string[] args, string? workDir, CancellationToken ct)
     {
         try
         {
-            var psi = new ProcessStartInfo(exe, args)
+            var psi = new ProcessStartInfo(exe)
             {
                 UseShellExecute        = false,
                 CreateNoWindow         = true,
@@ -608,6 +608,8 @@ public sealed class BootstrapService
                 RedirectStandardError  = true,
                 WorkingDirectory       = workDir ?? ""
             };
+            foreach (var arg in args)
+                psi.ArgumentList.Add(arg);
             using var proc = Process.Start(psi);
             if (proc == null) return (-1, "Process failed to start");
 
