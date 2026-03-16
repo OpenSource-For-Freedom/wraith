@@ -3,7 +3,8 @@
 
 param(
     [switch]$Close,
-    [switch]$ElevatedClose
+    [switch]$ElevatedClose,
+    [switch]$ForceSetup
 )
 
 function Test-IsAdmin {
@@ -126,16 +127,24 @@ if (-not $pythonExe) {
     Write-Host "  Python not found. Attempting auto-install via winget..." -ForegroundColor Yellow
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($winget) {
-        # Detect OS build to choose the most secure compatible Python
+        # Prefer 3.12 first for maximum scanner package compatibility.
         $buildNum = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuildNumber -as [int]
-        $pyId = if ($buildNum -ge 22000) { 'Python.Python.3.14' } else { 'Python.Python.3.12' }
-        $pyIdFb = if ($buildNum -ge 22000) { 'Python.Python.3.13' } else { 'Python.Python.3.11' }
-        Write-Host "  Installing $pyId (Windows build $buildNum)..." -ForegroundColor Yellow
-        winget install --id $pyId --silent --scope user --accept-package-agreements --accept-source-agreements
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  Trying fallback $pyIdFb..." -ForegroundColor Yellow
-            winget install --id $pyIdFb --silent --scope user --accept-package-agreements --accept-source-agreements
+        $pyIds = if ($buildNum -ge 22000) {
+            @('Python.Python.3.12', 'Python.Python.3.13', 'Python.Python.3.11')
+        } else {
+            @('Python.Python.3.12', 'Python.Python.3.11', 'Python.Python.3.10')
         }
+
+        winget source update *> $null
+        foreach ($pyId in $pyIds) {
+            Write-Host "  Installing $pyId (Windows build $buildNum)..." -ForegroundColor Yellow
+            winget install --id $pyId --exact --silent --disable-interactivity --scope user --accept-package-agreements --accept-source-agreements
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { break }
+            Write-Host "  Retry with machine scope..." -ForegroundColor DarkYellow
+            winget install --id $pyId --exact --silent --disable-interactivity --scope machine --accept-package-agreements --accept-source-agreements
+            if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq -1978335189) { break }
+        }
+
         # Refresh PATH so newly installed Python is visible
         $env:PATH = [Environment]::GetEnvironmentVariable('PATH','User') + ';' +
                     [Environment]::GetEnvironmentVariable('PATH','Machine')
@@ -151,6 +160,41 @@ if (-not $pythonExe) {
             } catch {}
         }
     }
+
+    if (-not $pythonExe) {
+        Write-Host "  winget path failed. Trying official python.org installer..." -ForegroundColor Yellow
+        $installerUrls = @(
+            'https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe',
+            'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe'
+        )
+
+        foreach ($url in $installerUrls) {
+            try {
+                $installer = Join-Path $env:TEMP (Split-Path $url -Leaf)
+                Write-Host "  Downloading $url" -ForegroundColor Yellow
+                Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+                Write-Host "  Running installer..." -ForegroundColor Yellow
+                Start-Process -FilePath $installer -ArgumentList '/quiet InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 SimpleInstall=1' -Wait
+                $env:PATH = [Environment]::GetEnvironmentVariable('PATH','User') + ';' +
+                            [Environment]::GetEnvironmentVariable('PATH','Machine')
+                Start-Sleep -Seconds 2
+                foreach ($candidate in @('python', 'python3')) {
+                    try {
+                        $ver = & $candidate --version 2>&1
+                        if ($LASTEXITCODE -eq 0 -and "$ver" -match 'Python 3') {
+                            $pythonExe = $candidate
+                            Write-Host "  Python installed: $ver" -ForegroundColor Green
+                            break
+                        }
+                    } catch {}
+                }
+                if ($pythonExe) { break }
+            } catch {
+                Write-Host "  Installer failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+            }
+        }
+    }
+
     if (-not $pythonExe) {
         Write-Host "  ERROR: Python could not be installed automatically." -ForegroundColor Red
         Write-Host "  Install from https://python.org -- check 'Add Python to PATH'." -ForegroundColor Yellow
@@ -316,6 +360,10 @@ try {
     # Ignore if nothing is running or taskkill unavailable
 }
 
-Start-Process $exePath
+if ($ForceSetup) {
+    Start-Process $exePath -ArgumentList "--setup"
+} else {
+    Start-Process $exePath
+}
 Write-Host "  WRAITH launched." -ForegroundColor Green
 Start-Sleep 2

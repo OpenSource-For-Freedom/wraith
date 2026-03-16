@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 
 namespace WRAITH.Services;
-
+/// ALL STEPS AND CHANGES BELOW: BUG>>> python wouldnt install using winget so we had to fortify that process
 /// <summary>Progress states reported by <see cref="BootstrapService.StepProgress"/>.</summary>
 public enum SetupStepStatus { Pending, Running, Done, Skipped, Error }
 
@@ -38,6 +38,12 @@ public sealed class BootstrapService
     /// properly parented and cannot appear behind other windows.
     /// </summary>
     public System.Windows.Window? DialogOwner { get; set; }
+
+    /// <summary>
+    /// Forces the PATH confirmation step even when path_confirmed is already true.
+    /// Used by explicit walkthrough/testing launches.
+    /// </summary>
+    public bool ForcePathPrompt { get; set; }
 
     /// <summary>
     /// Returns true when setup needs to run: either no valid Python is configured
@@ -98,7 +104,7 @@ public sealed class BootstrapService
                 Log($"Already configured — {ver} ({quickPath})");
                 // Always confirm PATH before fast-returning.
                 // Use base_python (the real install) for the PATH dialog, not the venv.
-                if (!IsPathConfirmed(envPath))
+                if (ForcePathPrompt || !IsPathConfirmed(envPath))
                 {
                     var basePython = ReadBasePythonFromEnvJson(envPath) ?? quickPath;
                     await EnsurePythonOnPathAsync(basePython, envPath, ct);
@@ -286,17 +292,15 @@ public sealed class BootstrapService
     /// <summary>
     /// Returns ordered winget IDs and directory name suffixes for the most
     /// secure Python compatible with this OS.
-    /// Windows 11 → 3.14 / 3.13; Windows 10 / Server → 3.12 / 3.11 / 3.10.
+    /// We prefer 3.12 first because scanner dependencies have reliable wheels.
     /// </summary>
     private static (string[] wingetIds, string[] dirSuffixes) GetPreferredPythonTargets()
     {
-        // For winget install we still prefer the latest stable for each OS.
-        // For directory probing (FindPythonAsync) we prefer 3.12 first even on Win11
-        // because all scanner packages (yara-python, pywin32, etc.) have pre-built
-        // binary wheels for cp312; 3.14 wheels may not exist yet.
+        // Keep install and discovery aligned to avoid pulling versions that may not
+        // have compatible wheels for the scanner stack on fresh machines.
         if (IsWindows11OrLater())
-            return (new[] { "Python.Python.3.14", "Python.Python.3.13", "Python.Python.3.12" },
-                    new[] { "312", "313", "314" });   // probe 3.12 first
+            return (new[] { "Python.Python.3.12", "Python.Python.3.13", "Python.Python.3.11" },
+                    new[] { "312", "313", "311" });
         return (new[] { "Python.Python.3.12", "Python.Python.3.11", "Python.Python.3.10" },
                 new[] { "312", "311", "310" });
     }
@@ -470,44 +474,71 @@ public sealed class BootstrapService
     // ── winget install ─────────────────────────────────────────────────
     private async Task<string?> TryInstallPythonViaWingetAsync(CancellationToken ct)
     {
-        if (!await IsWingetAvailableAsync(ct))
+        var wingetExe = await ResolveWingetExecutablePathAsync(ct);
+        if (wingetExe == null)
         {
             Log("winget not available on this system.");
-            return null;
+            Log("Falling back to official python.org installer...");
+            return await TryInstallPythonViaOfficialInstallerAsync(ct);
         }
 
         var (wingetIds, _) = GetPreferredPythonTargets();
+        _ = await RunAsync(wingetExe, ["source", "update"], null, ct);
+        bool didResetSources = false;
+
         foreach (var id in wingetIds)
         {
-            Log($"Installing {id} via winget...");
-            var (code, _) = await RunAsync("winget",
-                ["install", "--id", id, "--silent", "--scope", "user",
-                 "--accept-package-agreements", "--accept-source-agreements"], null, ct);
-
-            if (code == 0 || code == -1978335189 /* WINGET_ERROR_ALREADY_INSTALLED */)
+            foreach (var scope in new[] { "user", "machine" })
             {
-                Log("Installation complete. Refreshing PATH and locating Python...");
-                // Reload the running-process PATH from registry so FindPythonAsync
-                // can discover the newly installed Python without a restart.
-                var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
-                var userPathNow = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)  ?? "";
-                Environment.SetEnvironmentVariable("PATH", userPathNow + ";" + machinePath);
-                await Task.Delay(2000, ct); // let installer finalise file handles
-                var found = await FindPythonAsync(ct);
-                if (found != null) return found;
+                Log($"Installing {id} via winget (scope={scope})...");
+                var (code, stderr) = await RunAsync(wingetExe,
+                    ["install", "--id", id, "--exact", "--silent", "--disable-interactivity",
+                     "--scope", scope, "--accept-package-agreements", "--accept-source-agreements"], null, ct);
+
+                // 0 = success, -1978335189 = already installed
+                if (code == 0 || code == -1978335189)
+                {
+                    Log("Installation complete. Refreshing PATH and locating Python...");
+                    // Reload the running-process PATH from registry so FindPythonAsync
+                    // can discover the newly installed Python without a restart.
+                    var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
+                    var userPathNow = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User)  ?? "";
+                    Environment.SetEnvironmentVariable("PATH", userPathNow + ";" + machinePath);
+                    await Task.Delay(2500, ct); // let installer finalise file handles
+                    var found = await FindPythonAsync(ct);
+                    if (found != null) return found;
+                }
+
+                var err = (stderr ?? "").Trim();
+                if (!string.IsNullOrEmpty(err))
+                    Log($"winget error ({id}, {scope}): {err}");
+                else
+                    Log($"winget returned exit code {code} for {id} ({scope}).");
+
+                // Fresh machines sometimes have stale/invalid sources on first use.
+                if (!didResetSources && err.Contains("source", StringComparison.OrdinalIgnoreCase))
+                {
+                    didResetSources = true;
+                    Log("Resetting winget sources and retrying...");
+                    _ = await RunAsync(wingetExe, ["source", "reset", "--force"], null, ct);
+                    _ = await RunAsync(wingetExe, ["source", "update"], null, ct);
+                    continue;
+                }
             }
-            Log($"winget returned exit code {code} for {id}.");
         }
 
-        Log("winget install did not succeed.");
-        return null;
+        Log("winget install did not succeed. Falling back to official python.org installer...");
+        return await TryInstallPythonViaOfficialInstallerAsync(ct);
     }
 
     private static async Task<bool> IsWingetAvailableAsync(CancellationToken ct)
     {
         try
         {
-            var psi = new ProcessStartInfo("winget", "--version")
+            var wingetExe = await ResolveWingetExecutablePathAsync(ct);
+            if (wingetExe == null) return false;
+
+            var psi = new ProcessStartInfo(wingetExe, "--version")
             {
                 UseShellExecute        = false,
                 CreateNoWindow         = true,
@@ -522,6 +553,111 @@ public sealed class BootstrapService
             return proc.ExitCode == 0;
         }
         catch { return false; }
+    }
+
+    private static async Task<string?> ResolveWingetExecutablePathAsync(CancellationToken ct)
+    {
+        try
+        {
+            var fromPath = await FindOnPathAsync("winget", ct);
+            if (fromPath != null) return fromPath;
+        }
+        catch { }
+
+        var candidates = new List<string>();
+        try
+        {
+            var lad = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            candidates.Add(System.IO.Path.Combine(lad, "Microsoft", "WindowsApps", "winget.exe"));
+        }
+        catch { }
+
+        try
+        {
+            var usersRoot = @"C:\Users";
+            if (System.IO.Directory.Exists(usersRoot))
+            {
+                foreach (var profile in System.IO.Directory.GetDirectories(usersRoot))
+                    candidates.Add(System.IO.Path.Combine(profile, "AppData", "Local", "Microsoft", "WindowsApps", "winget.exe"));
+            }
+        }
+        catch { }
+
+        return candidates.FirstOrDefault(System.IO.File.Exists);
+    }
+
+    private static string[] GetOfficialPythonInstallerUrls()
+    {
+        if (IsWindows11OrLater())
+        {
+            return new[]
+            {
+                "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe",
+                "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+            };
+        }
+
+        return new[]
+        {
+            "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe",
+            "https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe"
+        };
+    }
+
+    private async Task<string?> TryInstallPythonViaOfficialInstallerAsync(CancellationToken ct)
+    {
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+
+        foreach (var url in GetOfficialPythonInstallerUrls())
+        {
+            try
+            {
+                var fileName = System.IO.Path.GetFileName(new Uri(url).AbsolutePath);
+                var installerPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+                Log($"Downloading Python installer: {url}");
+
+                using (var resp = await http.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct))
+                {
+                    resp.EnsureSuccessStatusCode();
+                    await using var fs = new System.IO.FileStream(installerPath, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
+                    await resp.Content.CopyToAsync(fs, ct);
+                }
+
+                Log($"Running installer: {installerPath}");
+                var (code, stderr) = await RunAsync(installerPath,
+                    ["/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_pip=1", "Include_test=0", "SimpleInstall=1"],
+                    null, ct);
+
+                if (code == 0 || code == 3010)
+                {
+                    var machinePath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
+                    var userPathNow = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
+                    Environment.SetEnvironmentVariable("PATH", userPathNow + ";" + machinePath);
+
+                    await Task.Delay(2500, ct);
+                    var found = await FindPythonAsync(ct);
+                    if (found != null)
+                    {
+                        Log("Python installed via official installer.");
+                        try { System.IO.File.Delete(installerPath); } catch { }
+                        return found;
+                    }
+                    Log("Installer completed, but Python was not detected yet.");
+                }
+                else
+                {
+                    Log($"Official installer exit code {code}: {(stderr ?? string.Empty).Trim()}");
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Log($"Official installer failed for {url}: {ex.Message}");
+            }
+        }
+
+        Log("Official python.org installer fallback failed.");
+        return null;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────

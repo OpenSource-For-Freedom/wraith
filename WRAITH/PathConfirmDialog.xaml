@@ -110,13 +110,13 @@
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SkipBtn"
                     Content="Skip for now"
-                    Width="108" Height="32" Margin="0,0,10,0"
+                Width="Auto" MinWidth="108" Height="32" Margin="0,0,10,0" Padding="14,0"
                     Click="SkipBtn_Click"
                     Style="{StaticResource SpellButton}"
                     Foreground="#415A6E" FontSize="11.5"/>
             <Button x:Name="ConfirmBtn"
                     Content="Add to PATH"
-                    Width="108" Height="32"
+                Width="Auto" MinWidth="148" Height="32" Padding="14,0"
                     Click="AddBtn_Click"
                     Style="{StaticResource SpellButton}"
                     IsEnabled="False"

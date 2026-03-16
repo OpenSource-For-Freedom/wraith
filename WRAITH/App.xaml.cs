@@ -57,15 +57,20 @@ public partial class App : Application
         };
 
         var baseDir = BootstrapService.ResolveBaseDir();
-        Trace($"OnStartup: baseDir={baseDir}, IsFirstRun={BootstrapService.IsFirstRun(baseDir)}");
+        bool forceSetup = e.Args.Any(a =>
+            string.Equals(a, "--setup", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "-setup", StringComparison.OrdinalIgnoreCase));
+        Trace($"OnStartup: baseDir={baseDir}, IsFirstRun={BootstrapService.IsFirstRun(baseDir)}, ForceSetup={forceSetup}");
 
-        if (BootstrapService.IsFirstRun(baseDir))
+        if (forceSetup || BootstrapService.IsFirstRun(baseDir))
         {
             // ── First run: show ONLY the setup window ──────────────────────────
             // MainWindow is not created until setup completes and WRAITH restarts.
-            Trace("OnStartup: first-run — showing setup window");
+            Trace(forceSetup
+                ? "OnStartup: forced setup — showing setup window"
+                : "OnStartup: first-run — showing setup window");
             ShutdownMode = ShutdownMode.OnLastWindowClose;
-            RunSetupThenLaunch(baseDir);
+            RunSetupThenLaunch(baseDir, forceSetup);
         }
         else
         {
@@ -98,7 +103,7 @@ public partial class App : Application
     /// Shows the setup window, runs bootstrap, then restarts WRAITH so the main
     /// window opens in a fresh process that inherits the updated PATH.
     /// </summary>
-    private void RunSetupThenLaunch(string baseDir)
+    private void RunSetupThenLaunch(string baseDir, bool forceSetup = false)
     {
         var setupWin = new SetupProgressWindow();
         setupWin.Show();
@@ -110,6 +115,7 @@ public partial class App : Application
 
         var bs = new BootstrapService();
         bs.DialogOwner  = setupWin;   // ensures dialog is owned & properly modal
+        bs.ForcePathPrompt = forceSetup;
         bs.StepProgress += (idx, status, detail) => setupWin.UpdateStep(idx, status, detail);
         bs.LogMessage   += msg => Trace(msg);
 
