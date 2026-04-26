@@ -81,9 +81,7 @@ PASSWORD_PATTERNS = [
 def _run_cmd(cmd: "str | list[str]", timeout: int = 15) -> str:
     try:
         args = cmd if isinstance(cmd, list) else cmd.split()
-        result = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
         return result.stdout.strip()
     except Exception:
         return ""

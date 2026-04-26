@@ -138,9 +138,7 @@ def _run_ps(cmd: str, timeout: int = 30) -> str:
 def _run_cmd(cmd: "str | list[str]", timeout: int = 20) -> str:
     try:
         args = cmd if isinstance(cmd, list) else cmd.split()
-        result = subprocess.run(
-            args, capture_output=True, text=True, timeout=timeout
-        )
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
         return result.stdout.strip()
     except Exception:
         return ""

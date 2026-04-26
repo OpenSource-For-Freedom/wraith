@@ -496,34 +496,127 @@ SUSPICIOUS_RE = [re.compile(p, re.IGNORECASE) for p in SUSPICIOUS_POSTINSTALL_PA
 
 POPULAR_PACKAGES = [
     # Core Node / JS
-    "lodash", "moment", "express", "react", "axios", "webpack", "babel",
-    "typescript", "eslint", "prettier", "jest", "mocha", "chai", "nodemon",
-    "dotenv", "cors", "mongoose", "sequelize", "pg", "mysql2", "redis",
-    "socket.io", "next", "vue", "angular", "svelte", "vite", "rollup",
-    "parcel", "gulp", "rimraf", "cross-env", "node-fetch", "got",
-    "superagent", "request", "cheerio", "puppeteer", "playwright", "cypress",
-    "sinon", "nyc", "husky", "lint-staged", "lerna", "nx", "turbo",
-    "esbuild", "swc", "bun", "vitest", "fastify", "koa", "hapi", "nest",
-    "prisma", "drizzle", "typeorm", "mikro-orm", "knex",
-    "stripe", "twilio", "sendgrid", "nodemailer",
-    "passport", "jsonwebtoken", "bcrypt", "argon2",
-    "zod", "yup", "joi", "ajv",
-    "winston", "pino", "morgan",
-    "sharp", "jimp", "canvas",
-    "electron", "tauri",
-    "supabase", "firebase", "amplify",
-    "trpc", "graphql", "apollo",
+    "lodash",
+    "moment",
+    "express",
+    "react",
+    "axios",
+    "webpack",
+    "babel",
+    "typescript",
+    "eslint",
+    "prettier",
+    "jest",
+    "mocha",
+    "chai",
+    "nodemon",
+    "dotenv",
+    "cors",
+    "mongoose",
+    "sequelize",
+    "pg",
+    "mysql2",
+    "redis",
+    "socket.io",
+    "next",
+    "vue",
+    "angular",
+    "svelte",
+    "vite",
+    "rollup",
+    "parcel",
+    "gulp",
+    "rimraf",
+    "cross-env",
+    "node-fetch",
+    "got",
+    "superagent",
+    "request",
+    "cheerio",
+    "puppeteer",
+    "playwright",
+    "cypress",
+    "sinon",
+    "nyc",
+    "husky",
+    "lint-staged",
+    "lerna",
+    "nx",
+    "turbo",
+    "esbuild",
+    "swc",
+    "bun",
+    "vitest",
+    "fastify",
+    "koa",
+    "hapi",
+    "nest",
+    "prisma",
+    "drizzle",
+    "typeorm",
+    "mikro-orm",
+    "knex",
+    "stripe",
+    "twilio",
+    "sendgrid",
+    "nodemailer",
+    "passport",
+    "jsonwebtoken",
+    "bcrypt",
+    "argon2",
+    "zod",
+    "yup",
+    "joi",
+    "ajv",
+    "winston",
+    "pino",
+    "morgan",
+    "sharp",
+    "jimp",
+    "canvas",
+    "electron",
+    "tauri",
+    "supabase",
+    "firebase",
+    "amplify",
+    "trpc",
+    "graphql",
+    "apollo",
     # AI / ML / LLM ecosystem (high-value typosquat targets)
-    "openai", "anthropic", "langchain", "llamaindex", "ollama",
-    "transformers", "huggingface", "replicate", "cohere",
-    "deepseek", "mistral", "together", "groq",
-    "ai", "vercel-ai", "ai-sdk",
-    "crewai", "autogpt", "agentgpt",
-    "tiktoken", "tokenizer",
-    "chromadb", "pinecone", "weaviate", "qdrant",
-    "whisper", "stability-ai", "elevenlabs",
-    "langsmith", "langfuse", "helicone",
-    "llm", "gpt4all", "localai",
+    "openai",
+    "anthropic",
+    "langchain",
+    "llamaindex",
+    "ollama",
+    "transformers",
+    "huggingface",
+    "replicate",
+    "cohere",
+    "deepseek",
+    "mistral",
+    "together",
+    "groq",
+    "ai",
+    "vercel-ai",
+    "ai-sdk",
+    "crewai",
+    "autogpt",
+    "agentgpt",
+    "tiktoken",
+    "tokenizer",
+    "chromadb",
+    "pinecone",
+    "weaviate",
+    "qdrant",
+    "whisper",
+    "stability-ai",
+    "elevenlabs",
+    "langsmith",
+    "langfuse",
+    "helicone",
+    "llm",
+    "gpt4all",
+    "localai",
 ]
 
 
@@ -547,23 +640,23 @@ def _levenshtein(a: str, b: str) -> int:
 # independently legitimate — exclude from typosquat detection.
 _KNOWN_LEGITIMATE_SIMILARS: frozenset = frozenset(
     {
-        "eclint",       # EditorConfig linter
-        "tslint",       # TypeScript linter (deprecated but well-known)
-        "vitest",       # Vite-native test runner
-        "matcha",       # BDD-style assertion library
-        "dot",          # DoT.js template engine
-        "jshint",       # JS linter
-        "recast",       # JS AST transformation library
-        "cypress",      # E2E testing framework
+        "eclint",  # EditorConfig linter
+        "tslint",  # TypeScript linter (deprecated but well-known)
+        "vitest",  # Vite-native test runner
+        "matcha",  # BDD-style assertion library
+        "dot",  # DoT.js template engine
+        "jshint",  # JS linter
+        "recast",  # JS AST transformation library
+        "cypress",  # E2E testing framework
         # Official AI SDK scoped packages are handled via COMPROMISED_PACKAGES
         # exact-match; exclude their short aliases from typosquat distance check
-        "ai",           # Vercel AI SDK (official)
-        "groq",         # Official Groq SDK
-        "cohere",       # Official Cohere SDK
-        "ollama",       # Official Ollama JS client
-        "replicate",    # Official Replicate SDK
-        "whisper",      # OpenAI Whisper
-        "tiktoken",     # Official OpenAI tokenizer
+        "ai",  # Vercel AI SDK (official)
+        "groq",  # Official Groq SDK
+        "cohere",  # Official Cohere SDK
+        "ollama",  # Official Ollama JS client
+        "replicate",  # Official Replicate SDK
+        "whisper",  # OpenAI Whisper
+        "tiktoken",  # Official OpenAI tokenizer
     }
 )
 
