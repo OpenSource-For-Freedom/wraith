@@ -25,6 +25,8 @@ wraith_quickscan_*.json
 *.zip
 WRAITH-v*/
 publish-test/
+publish-test-new/
+publish-fixed/
 publish/
 release-test/
 

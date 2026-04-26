@@ -35,4 +35,12 @@
     </Content>
   </ItemGroup>
 
+  <!-- Copy automation scripts next to the exe so AutomationMenuService can find them -->
+  <ItemGroup>
+    <Content Include="..\automation\**\*">
+      <Link>automation\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

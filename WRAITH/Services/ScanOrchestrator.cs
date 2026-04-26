@@ -10,6 +10,8 @@ namespace WRAITH.Services;
 /// </summary>
 public class ScanOrchestrator
 {
+    private static readonly TimeSpan ScannerProcessTimeout = TimeSpan.FromMinutes(10);
+
     private readonly string _scannerDir;
     private readonly string _nativeDir;
     private readonly string _pythonExe;
@@ -185,7 +187,9 @@ public class ScanOrchestrator
                 proc.BeginOutputReadLine();
                 proc.BeginErrorReadLine();
 
-                await proc.WaitForExitAsync(ct);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(ScannerProcessTimeout);
+                await proc.WaitForExitAsync(timeoutCts.Token);
 
                 var json = sb.ToString().Trim();
                 if (string.IsNullOrWhiteSpace(json))
@@ -196,6 +200,12 @@ public class ScanOrchestrator
                 {
                     ParseScanJson(json, result);
                 }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { }
+                result.Error = $"Scan timed out after {ScannerProcessTimeout.TotalMinutes:0} minutes";
+                Log($"Scanner process timeout: mode={mode} exe={exe}");
             }
             catch (OperationCanceledException)
             {

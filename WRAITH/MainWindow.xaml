@@ -361,6 +361,56 @@
                       Command="{Binding ClearCommand}"
                       Margin="0,0,0,12"
                       ToolTip="Clear all findings"/>
+                    <Button Content="Quarantine Vault" Style="{StaticResource GhostButton}"
+                      Command="{Binding OpenQuarantineCommand}"
+                      Margin="0,0,0,12"
+                      ToolTip="Review quarantined files, restore, or delete (admin required for delete)"/>
+
+                    <Separator/>
+
+                    <TextBlock Text="SLACK WEBHOOK" Style="{StaticResource GoldLabel}" Margin="0,8,0,4"/>
+                    <TextBlock Text="Test first, then save. Alerts are sent for Critical (and optionally High) findings."
+                   Foreground="{StaticResource BrPatronusSilver}"
+                   FontSize="10"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,6"/>
+                    <TextBox Text="{Binding SlackWebhookUrl, UpdateSourceTrigger=PropertyChanged}"
+                       Margin="0,0,0,6"
+                       ToolTip="Paste Slack Incoming Webhook URL"/>
+                    <CheckBox Content="Notify on HIGH too"
+                  IsChecked="{Binding SlackNotifyOnHigh}"
+                  Foreground="{StaticResource BrPatronusSilver}"
+                  Margin="0,0,0,8"/>
+                    <Button Content="Test Webhook" Style="{StaticResource GhostButton}"
+                      Command="{Binding TestSlackWebhookCommand}"
+                      Margin="0,0,0,4"
+                      ToolTip="Send a test alert without saving"/>
+                    <Button Content="Save Webhook" Style="{StaticResource GhostButton}"
+                      Command="{Binding SaveSlackWebhookCommand}"
+                      Margin="0,0,0,10"
+                      ToolTip="Persist webhook settings to policy"/>
+
+                    <TextBlock Text="DISCORD WEBHOOK" Style="{StaticResource GoldLabel}" Margin="0,8,0,4"/>
+                    <TextBlock Text="Test first, then save. Alerts are sent for Critical (and optionally High) findings."
+                   Foreground="{StaticResource BrPatronusSilver}"
+                   FontSize="10"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,6"/>
+                    <TextBox Text="{Binding DiscordWebhookUrl, UpdateSourceTrigger=PropertyChanged}"
+                       Margin="0,0,0,6"
+                       ToolTip="Paste Discord Incoming Webhook URL"/>
+                    <CheckBox Content="Notify on HIGH too"
+                  IsChecked="{Binding DiscordNotifyOnHigh}"
+                  Foreground="{StaticResource BrPatronusSilver}"
+                  Margin="0,0,0,8"/>
+                    <Button Content="Test Discord Webhook" Style="{StaticResource GhostButton}"
+                      Command="{Binding TestDiscordWebhookCommand}"
+                      Margin="0,0,0,4"
+                      ToolTip="Send a test alert without saving"/>
+                    <Button Content="Save Discord Webhook" Style="{StaticResource GhostButton}"
+                      Command="{Binding SaveDiscordWebhookCommand}"
+                      Margin="0,0,0,10"
+                      ToolTip="Persist webhook settings to policy"/>
 
               <Separator/>
 
@@ -383,7 +433,7 @@
                   <TextBlock Foreground="#7ABFAA">YARA rule matching</TextBlock>
                   <TextBlock Foreground="#7ABFAA">Heuristic entropy scan</TextBlock>
                   <TextBlock Foreground="#7ABFAA">Windows Event Viewer</TextBlock>
-                  <TextBlock Foreground="#7ABFAA">npm supply-chain (cline)</TextBlock>
+                  <TextBlock Foreground="#7ABFAA">npm / .NET supply-chain</TextBlock>
                   <TextBlock Foreground="#7ABFAA">Live process analysis</TextBlock>
                   <TextBlock Foreground="#7ABFAA">Network / C2 detection</TextBlock>
                   <TextBlock Foreground="#7ABFAA">Windows security config</TextBlock>
@@ -409,14 +459,15 @@
         <Grid Grid.Column="2">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>     <!-- filter bar -->
-            <RowDefinition Height="*"/>        <!-- findings list -->
+            <RowDefinition Height="Auto"/>     <!-- SOC incident brief -->
+            <RowDefinition Height="*" MinHeight="180"/>        <!-- findings list -->
             <RowDefinition Height="Auto"/>     <!-- action bar -->
             <RowDefinition Height="6"/>        <!-- splitter -->
-            <RowDefinition Height="160"/>      <!-- log -->
+            <RowDefinition Height="2*" MinHeight="120"/>      <!-- log -->
           </Grid.RowDefinitions>
           <!-- Watermark: spans entire right panel, floats above content -->
           <Image Source="Assets/wraith.png"
-                 Grid.Row="0" Grid.RowSpan="5"
+                 Grid.Row="0" Grid.RowSpan="6"
                  Opacity="0.06"
                  HorizontalAlignment="Center"
                  VerticalAlignment="Center"
@@ -462,21 +513,24 @@
 
               <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
                 <TextBlock Text="Severity:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                <ComboBox Width="90"
+                <ComboBox Width="90" Background="#0D0D1A" Foreground="#C8A951"
+                          BorderBrush="#2A2A4A"
                           ItemsSource="{Binding SeverityOptions}"
                           SelectedItem="{Binding SeverityFilter}"/>
               </StackPanel>
 
               <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
                 <TextBlock Text="Category:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                <ComboBox Width="110"
+                <ComboBox Width="110" Background="#0D0D1A" Foreground="#C8A951"
+                          BorderBrush="#2A2A4A"
                           ItemsSource="{Binding CategoryOptions}"
                           SelectedItem="{Binding CategoryFilter}"/>
               </StackPanel>
 
               <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Center">
                 <TextBlock Text="Live:" Style="{StaticResource GoldLabel}" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                <ComboBox Width="70"
+                <ComboBox Width="70" Background="#0D0D1A" Foreground="#C8A951"
+                          BorderBrush="#2A2A4A"
                           ItemsSource="{Binding LiveFilterOptions}"
                           SelectedItem="{Binding LiveFilter}"/>
               </StackPanel>
@@ -493,8 +547,80 @@
             </Grid>
           </Border>
 
+          <!-- SOC incident brief -->
+          <Border Grid.Row="1" Style="{StaticResource SpellPanel}" Margin="0,0,0,6" Padding="8,8">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.2*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1.8*"/>
+              </Grid.ColumnDefinitions>
+
+              <Border Grid.Column="0"
+                      Background="#120A20"
+                      BorderBrush="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}"
+                      BorderThickness="1"
+                      CornerRadius="5"
+                      Padding="0">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+
+                  <Border Grid.Column="0"
+                          Background="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}"
+                          CornerRadius="5,0,0,5"/>
+
+                  <StackPanel Grid.Column="1" Margin="10,7,10,8">
+                    <TextBlock Text="SOC INCIDENT BRIEF"
+                               Style="{StaticResource GoldLabel}"
+                               FontSize="10"/>
+                    <TextBlock Text="{Binding SocIncidentTitle}"
+                               Foreground="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               Margin="0,1,0,3"/>
+                    <TextBlock Text="{Binding SocIncidentDetail}"
+                               Foreground="{StaticResource BrPatronusSilver}"
+                               FontSize="11"
+                               TextWrapping="Wrap"/>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <Border Grid.Column="2"
+                      Background="#0C1028"
+                      BorderBrush="#2A1A5A"
+                      BorderThickness="1"
+                      CornerRadius="5"
+                      Padding="10,7,10,8">
+                <StackPanel>
+                  <TextBlock Text="EDR TELEMETRY"
+                             Style="{StaticResource GoldLabel}"
+                             FontSize="10"/>
+                  <TextBlock Text="{Binding SocCurrentModule}"
+                             Foreground="{StaticResource BrPatronusCore}"
+                             FontSize="12"
+                             FontWeight="SemiBold"
+                             Margin="0,2,0,2"/>
+                  <TextBlock Text="{Binding SocTelemetryLine}"
+                             Foreground="#88A8C8E8"
+                             FontSize="10"
+                             TextWrapping="Wrap"
+                             Margin="0,0,0,3"/>
+                  <TextBlock Text="{Binding SocRecommendedAction}"
+                             Foreground="#FFD700"
+                             FontSize="10"
+                             FontWeight="SemiBold"
+                             TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </Border>
+
           <!-- Findings ListView -->
-          <Border Grid.Row="1" Style="{StaticResource SpellPanel}" Padding="0">
+          <Border Grid.Row="2" Style="{StaticResource SpellPanel}" Padding="0">
             <ListView x:Name="LvFindings"
                       ItemsSource="{Binding FilteredFindings}"
                       SelectedItem="{Binding SelectedFinding}"
@@ -744,7 +870,7 @@
           </Border>
 
           <!-- Action bar: shown whenever a finding is selected -->
-          <Border Grid.Row="2"
+            <Border Grid.Row="3"
                   Background="#1A0A22"
                   BorderBrush="#FF2D55"
                   BorderThickness="0,1,0,1"
@@ -827,11 +953,13 @@
           </Border>
 
           <!-- Row splitter -->
-          <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
-                        Background="#1A0D3D" ShowsPreview="True"/>
+          <GridSplitter Grid.Row="4" Height="6" HorizontalAlignment="Stretch"
+                        Background="#1A0D3D" ShowsPreview="True"
+                        ResizeDirection="Rows"
+                        ResizeBehavior="PreviousAndNext"/>
 
           <!-- Log output -->
-          <Border Grid.Row="4" Style="{StaticResource SpellPanel}" Padding="0">
+          <Border Grid.Row="5" Style="{StaticResource SpellPanel}" Padding="0">
             <Grid>
               <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

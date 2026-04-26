@@ -1,4 +1,7 @@
 using System.Windows;
+using System.Reflection;
+using System.Threading;
+using System.IO;
 using Velopack;
 using Velopack.Sources;
 
@@ -12,36 +15,69 @@ namespace WRAITH.Services;
 public static class UpdateService
 {
     private const string RepoUrl = "https://github.com/OpenSource-For-Freedom/wraith";
+    private static readonly SemaphoreSlim _checkGate = new(1, 1);
 
-    /// <summary>Fired on the UI thread when an update has been fully downloaded.</summary>
-    /// <remarks>Parameter is the new version string, e.g. "1.2.0".</remarks>
-    public static event Action<string>? UpdateDownloaded;
+    /// <summary>
+    /// Fired on the UI thread when an update has been fully downloaded.
+    /// Parameters: (currentVersion, newVersion, changelog, isInstalled)
+    /// </summary>
+    public static event Action<string, string, string, bool>? UpdateDownloaded;
+
+    /// <summary>True when running as a Velopack-installed build (not from source).</summary>
+    public static bool IsInstalled => _mgr?.IsInstalled ?? false;
 
     private static UpdateManager? _mgr;
     private static UpdateInfo?    _pendingUpdate;
 
-    public static async Task CheckForUpdatesAsync()
+    private static void Trace(string msg)
     {
         try
         {
-            _mgr = new UpdateManager(new GithubSource(RepoUrl, null, false));
-
-            // Skip when running from source / dev environment (not installed via Velopack)
-            if (!_mgr.IsInstalled)
-                return;
-
-            _pendingUpdate = await _mgr.CheckForUpdatesAsync();
-            if (_pendingUpdate == null)
-                return;
-
-            await _mgr.DownloadUpdatesAsync(_pendingUpdate);
-
-            var version = _pendingUpdate.TargetFullRelease.Version.ToString();
-            Application.Current.Dispatcher.Invoke(() => UpdateDownloaded?.Invoke(version));
+            var f = Path.Combine(Path.GetTempPath(), "wraith-update.log");
+            File.AppendAllText(f, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
         }
         catch
         {
+            // Never throw from logging.
+        }
+    }
+
+    public static async Task CheckForUpdatesAsync()
+    {
+        await _checkGate.WaitAsync();
+        try
+        {
+            Trace("CheckForUpdatesAsync: begin");
+            _mgr = new UpdateManager(new GithubSource(RepoUrl, null, false));
+
+            _pendingUpdate = await _mgr.CheckForUpdatesAsync();
+            if (_pendingUpdate == null)
+            {
+                Trace("CheckForUpdatesAsync: no update");
+                return;
+            }
+
+            await _mgr.DownloadUpdatesAsync(_pendingUpdate);
+
+            var newVersion     = _pendingUpdate.TargetFullRelease.Version.ToString();
+            var changelog      = _pendingUpdate.TargetFullRelease.NotesMarkdown ?? string.Empty;
+            var currentVersion = Assembly.GetExecutingAssembly()
+                                         .GetName().Version?.ToString(3) ?? "unknown";
+            var installed      = _mgr.IsInstalled;
+
+            Trace($"CheckForUpdatesAsync: update ready current={currentVersion} new={newVersion} installed={installed}");
+
+            Application.Current.Dispatcher.Invoke(() =>
+                UpdateDownloaded?.Invoke(currentVersion, newVersion, changelog, installed));
+        }
+        catch (Exception ex)
+        {
             // Never block the app over a failed update check
+            Trace($"CheckForUpdatesAsync: failed {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _checkGate.Release();
         }
     }
 

@@ -559,11 +559,11 @@ def _check_priority_cves(
         else:
             patch_note = (
                 f"No patch available yet — expected Patch Tuesday {patch_date}. "
-                f"This system IS VULNERABLE. Mitigations: restrict local user access, enable "
+                f"This system may be vulnerable. Mitigations: restrict local user access, enable "
                 f"Credential Guard + Secure Boot, monitor for privilege escalation indicators "
                 f"(Event IDs 4672, 4673, 4674 — special privilege assignment)."
             )
-            sev = "CRITICAL"
+            sev = "HIGH"
 
         reason_parts = [
             entry["description"],

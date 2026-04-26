@@ -291,8 +291,8 @@ if ($buildExit -ne 0 -or $buildFailed) {
 }
 Write-Host "  Build succeeded." -ForegroundColor Green
 
-# Step 4: Desktop shortcut
-Banner "Step 4/5 - Desktop Shortcut"
+# Step 4: Desktop + Start Menu shortcuts
+Banner "Step 4/5 - Shortcuts"
 
 $IconPath     = Join-Path $Root "WRAITH\Assets\wraith.ico"
 $ShortcutPaths = @()
@@ -305,6 +305,16 @@ if ($CurrentDesktop) {
 $PublicDesktop = Join-Path $env:PUBLIC "Desktop"
 if (Test-Path $PublicDesktop) {
     $ShortcutPaths += (Join-Path $PublicDesktop "WRAITH.lnk")
+}
+
+$CurrentStartMenuPrograms = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs"
+if (Test-Path $CurrentStartMenuPrograms) {
+    $ShortcutPaths += (Join-Path $CurrentStartMenuPrograms "WRAITH.lnk")
+}
+
+$CommonStartMenuPrograms = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"
+if (Test-Path $CommonStartMenuPrograms) {
+    $ShortcutPaths += (Join-Path $CommonStartMenuPrograms "WRAITH.lnk")
 }
 
 $ShortcutPaths = $ShortcutPaths | Select-Object -Unique
@@ -332,9 +342,9 @@ try {
 
         Write-Host "  Shortcut created: $ShortcutPath" -ForegroundColor Green
     }
-    Write-Host "  Desktop launcher updated. Double-click WRAITH.lnk to launch." -ForegroundColor Cyan
+    Write-Host "  Desktop + Start Menu launchers updated." -ForegroundColor Cyan
 } catch {
-    Write-Host "  WARNING: Could not create desktop shortcut: $_" -ForegroundColor Yellow
+    Write-Host "  WARNING: Could not create one or more shortcuts: $_" -ForegroundColor Yellow
 }
 
 # Step 5: Launch

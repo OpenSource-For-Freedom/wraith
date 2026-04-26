@@ -199,3 +199,37 @@ public class LogTagToBrushConverter : IValueConverter
 
     public object ConvertBack(object v, Type t, object p, CultureInfo c) => DependencyProperty.UnsetValue;
 }
+
+/// <summary>Maps a string severity name to background brush (for QuarantineRecord which uses strings).</summary>
+public class StringSeverityToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string sev) return Brushes.Transparent;
+        return sev.ToLowerInvariant() switch
+        {
+            "critical" => new SolidColorBrush(Color.FromRgb(0xFF, 0x2D, 0x55)),
+            "high" => new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x35)),
+            "medium" => new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)),
+            "low" => new SolidColorBrush(Color.FromRgb(0x4F, 0xC3, 0xF7)),
+            _ => new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E))
+        };
+    }
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => DependencyProperty.UnsetValue;
+}
+
+/// <summary>Maps a string severity name to foreground colour for text on severity badges.</summary>
+public class StringSeverityToForegroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string sev) return Brushes.White;
+        return sev.ToLowerInvariant() switch
+        {
+            "medium" => new SolidColorBrush(Color.FromRgb(0x1A, 0x14, 0x00)),
+            "low" => new SolidColorBrush(Color.FromRgb(0x00, 0x1A, 0x2E)),
+            _ => Brushes.White
+        };
+    }
+    public object ConvertBack(object v, Type t, object p, CultureInfo c) => DependencyProperty.UnsetValue;
+}

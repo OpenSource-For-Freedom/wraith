@@ -135,10 +135,11 @@ def _run_ps(cmd: str, timeout: int = 30) -> str:
         return ""
 
 
-def _run_cmd(cmd: str, timeout: int = 20) -> str:
+def _run_cmd(cmd: "str | list[str]", timeout: int = 20) -> str:
     try:
+        args = cmd if isinstance(cmd, list) else cmd.split()
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, shell=True
+            args, capture_output=True, text=True, timeout=timeout
         )
         return result.stdout.strip()
     except Exception:
@@ -178,7 +179,7 @@ def check_ghost_processes() -> List[Dict]:
         pass
 
     # Get PIDs+names from tasklist (different Win32 API path)
-    task_out = _run_cmd("tasklist /FO CSV /NH")
+    task_out = _run_cmd(["tasklist", "/FO", "CSV", "/NH"])
     task_procs: dict[int, str] = {}
     for line in task_out.splitlines():
         parts = line.strip().split(",")
@@ -241,7 +242,7 @@ def check_unsigned_drivers() -> List[Dict]:
     findings = []
 
     # List running services of type=kernel driver
-    sc_out = _run_cmd("sc query type= driver state= all")
+    sc_out = _run_cmd(["sc", "query", "type=", "driver", "state=", "all"])
     driver_names = re.findall(r"SERVICE_NAME:\s*(\S+)", sc_out)
 
     if not driver_names:
@@ -365,7 +366,7 @@ def check_hidden_services() -> List[Dict]:
     # sc query — restrict to type=service to match WMI Win32_Service scope
     # Parse the full sc output to only include WIN32_*_PROCESS services,
     # filtering out kernel/filesystem driver entries and group bundle names.
-    sc_all_out = _run_cmd("sc query type= service state= all")
+    sc_all_out = _run_cmd(["sc", "query", "type=", "service", "state=", "all"])
     sc_services: set[str] = set()
     current_name = ""
     for line in sc_all_out.splitlines():
@@ -607,7 +608,7 @@ def check_test_signing() -> List[Dict]:
     allowing any unsigned driver to load. Rootkits enable this during install.
     """
     findings = []
-    out = _run_cmd("bcdedit /enum {current}")
+    out = _run_cmd(["bcdedit", "/enum", "{current}"])
     # Look for 'testsigning Yes'
     if re.search(r"testsigning\s+yes", out, re.IGNORECASE):
         findings.append(

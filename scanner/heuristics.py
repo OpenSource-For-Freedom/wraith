@@ -12,6 +12,7 @@ import os
 import math
 import struct
 import re
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
@@ -214,12 +215,16 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
     findings = []
     files_scanned = 0
     scanned = set()
+    start_ts = time.time()
+    max_scan_seconds = 300
 
     def scan_dir(base: str):
         nonlocal files_scanned
         if not os.path.exists(base):
             return
         for root, dirs, files in os.walk(base):
+            if (time.time() - start_ts) > max_scan_seconds:
+                break
             # Skip WRAITH's own .NET single-file extraction folder entirely
             if root.lower().startswith(_SELF_EXTRACT_PREFIX_LOWER):
                 dirs.clear()
@@ -240,9 +245,16 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
                 hits = scan_file_heuristics(fpath)
                 findings.extend(hits)
 
-    for p in HEURISTIC_SCAN_PATHS:
-        if p:
-            scan_dir(p)
+    roots: List[str] = []
+    if scan_path and os.path.exists(scan_path):
+        roots = [scan_path]
+    else:
+        roots = [p for p in HEURISTIC_SCAN_PATHS if p]
+
+    for p in roots:
+        scan_dir(p)
+        if (time.time() - start_ts) > max_scan_seconds:
+            break
 
     return {
         "module": "heuristics",

@@ -121,35 +121,59 @@ jobs:
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         shell: pwsh
         run: |
-          if (-not $env:SIGNING_CERT_PFX) {
-            Write-Warning "SIGNING_CERT_PFX secret not configured — WRAITH.exe will NOT be Authenticode-signed."
-            Write-Warning "To enable: add SIGNING_CERT_PFX (base64 PFX) and SIGNING_CERT_PASSWORD to repo secrets."
-            exit 0
-          }
-
-          # Decode PFX → temp file → import → sign → remove temp file
-          $pfxPath = Join-Path $env:TEMP "wraith-sign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_CERT_PFX))
-
-          $secPwd = ConvertTo-SecureString $env:SIGNING_CERT_PASSWORD -AsPlainText -Force
-          $cert   = Import-PfxCertificate -FilePath $pfxPath `
-                      -CertStoreLocation Cert:\CurrentUser\My `
-                      -Password $secPwd
-          Remove-Item $pfxPath -Force          # never leave the PFX on disk
-
           $exePath = "./publish/WRAITH.exe"
-          $result  = Set-AuthenticodeSignature `
-                       -FilePath        $exePath `
-                       -Certificate     $cert `
-                       -TimestampServer "http://timestamp.digicert.com" `
-                       -HashAlgorithm   SHA256
 
-          if ($result.Status -notin @("Valid", "UnknownError")) {
-            Write-Error "Signing failed: $($result.StatusMessage)"
-            exit 1
+          if ($env:SIGNING_CERT_PFX) {
+            # ── Trusted CA cert from repo secrets (production path) ────────────
+            Write-Host "Signing with trusted CA certificate from secrets..."
+
+            $pfxPath = Join-Path $env:TEMP "wraith-sign.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGNING_CERT_PFX))
+
+            $secPwd = ConvertTo-SecureString $env:SIGNING_CERT_PASSWORD -AsPlainText -Force
+            $cert   = Import-PfxCertificate -FilePath $pfxPath `
+                        -CertStoreLocation Cert:\CurrentUser\My `
+                        -Password $secPwd
+            Remove-Item $pfxPath -Force   # never leave the PFX on disk
+
+            $result = Set-AuthenticodeSignature `
+                        -FilePath        $exePath `
+                        -Certificate     $cert `
+                        -TimestampServer "http://timestamp.digicert.com" `
+                        -HashAlgorithm   SHA256
+
+            if ($result.Status -notin @("Valid", "UnknownError")) {
+              Write-Error "Signing failed: $($result.StatusMessage)"
+              exit 1
+            }
+          } else {
+            # ── Self-signed fallback (no secrets configured) ───────────────────
+            # Binary is Authenticode-signed so the signature field is present.
+            # Windows SmartScreen will show "Unknown Publisher" — users can click
+            # through. Upgrade to a trusted cert by adding SIGNING_CERT_PFX secret.
+            Write-Host "::warning::SIGNING_CERT_PFX not set — using self-signed certificate. Users will see 'Unknown Publisher' warning."
+
+            $cert = New-SelfSignedCertificate `
+                      -Subject         "CN=WRAITH Open Source, O=OpenSource-For-Freedom" `
+                      -Type            CodeSigning `
+                      -CertStoreLocation Cert:\CurrentUser\My `
+                      -KeySpec         Signature `
+                      -HashAlgorithm   SHA256 `
+                      -KeyLength       4096 `
+                      -NotAfter        (Get-Date).AddYears(1)
+
+            $result = Set-AuthenticodeSignature `
+                        -FilePath    $exePath `
+                        -Certificate $cert `
+                        -HashAlgorithm SHA256
+
+            if ($result.Status -notin @("Valid", "UnknownError")) {
+              Write-Error "Self-signing failed: $($result.StatusMessage)"
+              exit 1
+            }
           }
 
-          # Verify embedded signature is readable
+          # Verify embedded signature is readable regardless of cert type
           $sig = Get-AuthenticodeSignature $exePath
           Write-Host "Signed OK  status=$($sig.Status)  signer='$($sig.SignerCertificate.Subject)'"
 
@@ -243,6 +267,17 @@ jobs:
                   echo  winget not available. Downloading Python %PY_VER% installer...
                   powershell -NoProfile -Command ^^
                     "Invoke-WebRequest -Uri '%PY_URL%' -OutFile '%TEMP%\python-setup.exe'; Write-Host '  Download complete.'"
+
+                  :: ── Authenticode integrity check before execution ───────────
+                  powershell -NoProfile -Command ^^
+                    "$f='%TEMP%\python-setup.exe'; $sig=Get-AuthenticodeSignature $f; if ($sig.Status -ne 'Valid') { Write-Error ('Installer signature invalid: ' + $sig.Status); exit 1 }; $subj=$sig.SignerCertificate.Subject; if ($subj -notmatch 'Python Software Foundation') { Write-Error ('Unexpected signer: ' + $subj); exit 1 }; Write-Host '  Signature OK: ' $subj"
+                  if !ERRORLEVEL! NEQ 0 (
+                      echo  ERROR: Python installer failed signature verification. Aborting install.
+                      del /f /q "%TEMP%\python-setup.exe" >nul 2>&1
+                      pause
+                      exit /b 1
+                  )
+
                   echo  Running silent installer (this may take a minute)...
                   "%TEMP%\python-setup.exe" /quiet InstallAllUsers=0 PrependPath=1 Include_pip=1
                   del /f /q "%TEMP%\python-setup.exe" >nul 2>&1

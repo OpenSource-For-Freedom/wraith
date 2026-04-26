@@ -108,6 +108,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // ── Fields ──────────────────────────────────────────────────────────
     private ScanOrchestrator? _orchestrator;
     private CancellationTokenSource? _cts;
+    private readonly QuarantineService _quarantine = new();
+    private readonly AutomatedResponseService _autoResponse;
+    private readonly AlertingService _alerting = new();
 
     private bool _isScanning;
     private bool _isReady;
@@ -118,6 +121,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _severityFilter = "All";
     private string _categoryFilter = "All";
     private string _threatLevel = "UNKNOWN";
+    private string _slackWebhookUrl = "";
+    private bool _slackNotifyOnHigh = true;
+    private string _discordWebhookUrl = "";
+    private bool _discordNotifyOnHigh = true;
     private double _scanProgress;
     private bool _fullScan = true;
     private string _logOutput = "";
@@ -144,11 +151,54 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public int InfoCount { get => _infoCount; private set { _infoCount = value; OnPropertyChanged(); } }
     public int TotalCount => AllFindings.Count;
 
+    // SOC/EDR live briefing fields shown in the right-side incident banner.
+    public string SocIncidentTitle => ThreatLevel switch
+    {
+        "CRITICAL" => "Immediate containment required",
+        "HIGH" => "Elevated threat posture",
+        "MEDIUM" => "Suspicious activity detected",
+        "LOW" => "Low-risk anomalies observed",
+        "CLEAN" => "No active threat indicators",
+        "SCANNING" => "Telemetry collection in progress",
+        _ => "Awaiting threat intelligence"
+    };
+
+    public string SocIncidentDetail =>
+        $"Scope {ScanPath} | Findings {FilteredFindings.Count}/{TotalCount} | " +
+        $"Critical {CritCount} High {HighCount} Medium {MedCount} Low {LowCount} Info {InfoCount}";
+
+    public string SocCurrentModule =>
+        IsScanning
+            ? $"Active module: {MapPhaseToModule(CurrentPhase)}"
+            : "Active module: Standby";
+
+    public string SocTelemetryLine =>
+        IsScanning
+            ? "Live telemetry stream enabled. Findings are triaged as modules complete."
+            : "Telemetry idle. Start a scan to begin module-by-module triage.";
+
+    public string SocRecommendedAction => ThreatLevel switch
+    {
+        "CRITICAL" => "Action: Isolate host and review process lineage immediately.",
+        "HIGH" => "Action: Validate findings, quarantine artifacts, and inspect persistence.",
+        "MEDIUM" => "Action: Correlate with event logs and monitor for escalation.",
+        "LOW" => "Action: Track anomalies and continue routine monitoring.",
+        "SCANNING" => "Action: Review incoming findings in real time and prepare containment.",
+        "CLEAN" => "Action: Export report and maintain scheduled scans.",
+        _ => "Action: Configure scope and initiate scan telemetry."
+    };
+
     // ── Properties ───────────────────────────────────────────────────
     public bool IsScanning
     {
         get => _isScanning;
-        set { _isScanning = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotScanning)); }
+        set
+        {
+            _isScanning = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsNotScanning));
+            NotifySocStateChanged();
+        }
     }
     public bool IsNotScanning => !_isScanning;
 
@@ -161,7 +211,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string CurrentPhase
     {
         get => _currentPhase;
-        set { _currentPhase = value; OnPropertyChanged(); }
+        set
+        {
+            _currentPhase = value;
+            OnPropertyChanged();
+            NotifySocStateChanged();
+        }
     }
 
     public string ScanPath
@@ -197,7 +252,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ThreatLevel
     {
         get => _threatLevel;
-        set { _threatLevel = value; OnPropertyChanged(); }
+        set
+        {
+            _threatLevel = value;
+            OnPropertyChanged();
+            NotifySocStateChanged();
+        }
+    }
+
+    public string SlackWebhookUrl
+    {
+        get => _slackWebhookUrl;
+        set { _slackWebhookUrl = value; OnPropertyChanged(); }
+    }
+
+    public bool SlackNotifyOnHigh
+    {
+        get => _slackNotifyOnHigh;
+        set { _slackNotifyOnHigh = value; OnPropertyChanged(); }
+    }
+
+    public string DiscordWebhookUrl
+    {
+        get => _discordWebhookUrl;
+        set { _discordWebhookUrl = value; OnPropertyChanged(); }
+    }
+
+    public bool DiscordNotifyOnHigh
+    {
+        get => _discordNotifyOnHigh;
+        set { _discordNotifyOnHigh = value; OnPropertyChanged(); }
     }
 
     private string _osDescription = "Detecting...";
@@ -264,6 +348,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // ── Update notification ────────────────────────────────────────────
     private bool   _updateAvailable;
     private string _updateVersionText = "";
+    private string _updateCurrentVersion = "";
+    private string _updateChangelog       = "";
 
     public bool UpdateAvailable
     {
@@ -293,10 +379,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand RefreshStatusCommand { get; }
     public ICommand TraceOriginCommand { get; }
     public ICommand RestartToUpdateCommand { get; }
+    public ICommand OpenQuarantineCommand { get; }
+    public ICommand SaveSlackWebhookCommand { get; }
+    public ICommand TestSlackWebhookCommand { get; }
+    public ICommand SaveDiscordWebhookCommand { get; }
+    public ICommand TestDiscordWebhookCommand { get; }
 
     // ── Constructor ───────────────────────────────────────────────────
     public MainViewModel()
     {
+        _autoResponse = new AutomatedResponseService(_quarantine);
+
         StartScanCommand  = new AsyncRelayCommand(RunScanAsync,   () => !IsScanning && IsReady);
         StopScanCommand   = new RelayCommand(_ => StopScan(),     _ => IsScanning);
         ClearCommand      = new RelayCommand(_ => Clear(),        _ => !IsScanning);
@@ -334,23 +427,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
         });
         TraceOriginCommand = new AsyncRelayCommand<ThreatFinding>(
             f => TraceOriginAsync(f ?? _selectedFinding));
+        OpenQuarantineCommand = new RelayCommand(_ => OpenQuarantineWindow(), _ => !IsScanning);
+        SaveSlackWebhookCommand = new RelayCommand(_ => SaveSlackPolicy(), _ => !IsScanning);
+        TestSlackWebhookCommand = new AsyncRelayCommand(TestSlackWebhookAsync, () => !IsScanning);
+        SaveDiscordWebhookCommand = new RelayCommand(_ => SaveDiscordPolicy(), _ => !IsScanning);
+        TestDiscordWebhookCommand = new AsyncRelayCommand(TestDiscordWebhookAsync, () => !IsScanning);
+
+        LoadSlackPolicy();
 
         RestartToUpdateCommand = new RelayCommand(_ =>
         {
-            var confirm = MessageBox.Show(
-                $"[!] WRAITH {UpdateVersionText} has been downloaded.\n\nRestart now to apply the update?",
-                "WRAITH — Update Ready",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning,
-                MessageBoxResult.Yes);
-            if (confirm == MessageBoxResult.Yes)
+            var win = new UpdateAvailableWindow(
+                _updateCurrentVersion,
+                UpdateVersionText,
+                _updateChangelog,
+                canApply: UpdateService.IsInstalled);
+            win.Owner = Application.Current.MainWindow;
+            if (win.ShowDialog() == true)
                 UpdateService.ApplyAndRestart();
         });
 
-        UpdateService.UpdateDownloaded += version =>
+        UpdateService.UpdateDownloaded += (currentVer, newVer, changelog, isInstalled) =>
         {
-            UpdateAvailable     = true;
-            UpdateVersionText   = $"v{version}";
+            _updateCurrentVersion = currentVer;
+            _updateChangelog      = changelog;
+            UpdateAvailable       = true;
+            UpdateVersionText     = $"v{newVer}";
+
+            // Auto-show the update window as soon as download completes
+            var win = new UpdateAvailableWindow(currentVer, $"v{newVer}", changelog, isInstalled);
+            win.Owner = Application.Current.MainWindow;
+            if (win.ShowDialog() == true)
+                UpdateService.ApplyAndRestart();
         };
 
         // Drain pending findings/logs on the UI thread every 150 ms
@@ -436,6 +544,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             UpdateSummary();
             ApplyFilter();
+
+            var responseReport = await _autoResponse.ApplyAsync(result.Findings, _cts.Token);
+            foreach (var msg in responseReport.Messages)
+                AppendLog($"[TRACE] SOAR: {msg}");
+            if (responseReport.ActionsTaken > 0)
+                AppendLog($"[WARN] SOAR actions: {responseReport.ActionsTaken} (killed={responseReport.ProcessesKilled}, quarantined={responseReport.FilesQuarantined})");
+
+            var policy = _autoResponse.LoadPolicy();
+            var (sent, slackMsg) = await _alerting.SendSlackAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
+            if (sent)
+                AppendLog("[DONE] Slack alert delivered.");
+            else
+                AppendLog($"[TRACE] Slack: {slackMsg}");
+
+            var (discordSent, discordMsg) = await _alerting.SendDiscordAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
+            if (discordSent)
+                AppendLog("[DONE] Discord alert delivered.");
+            else
+                AppendLog($"[TRACE] Discord: {discordMsg}");
 
             var lvl = result.Summary.ThreatLevel;
             ThreatLevel  = lvl;
@@ -638,6 +765,157 @@ public sealed class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             AppendLog($"[ERROR] Could not open path: {ex.Message}");
+        }
+    }
+
+    private void OpenQuarantineWindow()
+    {
+        var win = new QuarantineWindow
+        {
+            Owner = Application.Current.MainWindow
+        };
+        win.ShowDialog();
+    }
+
+    private void LoadSlackPolicy()
+    {
+        try
+        {
+            var p = _autoResponse.LoadPolicy();
+            SlackWebhookUrl = p.SlackWebhookUrl ?? "";
+            SlackNotifyOnHigh = p.SlackNotifyOnHigh;
+            DiscordWebhookUrl = p.DiscordWebhookUrl ?? "";
+            DiscordNotifyOnHigh = p.DiscordNotifyOnHigh;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[WARN] Could not load webhook policy: {ex.Message}");
+        }
+    }
+
+    private void SaveSlackPolicy()
+    {
+        try
+        {
+            var p = _autoResponse.LoadPolicy();
+            p.SlackWebhookUrl = (SlackWebhookUrl ?? "").Trim();
+            p.SlackNotifyOnHigh = SlackNotifyOnHigh;
+            p.EnableSlackWebhook = !string.IsNullOrWhiteSpace(p.SlackWebhookUrl);
+            _autoResponse.SavePolicy(p);
+            AppendLog(p.EnableSlackWebhook
+                ? "[DONE] Slack webhook saved and enabled."
+                : "[WARN] Slack webhook cleared (disabled).");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[ERROR] Saving Slack webhook failed: {ex.Message}");
+        }
+    }
+
+    private void SaveDiscordPolicy()
+    {
+        try
+        {
+            var p = _autoResponse.LoadPolicy();
+            p.DiscordWebhookUrl = (DiscordWebhookUrl ?? "").Trim();
+            p.DiscordNotifyOnHigh = DiscordNotifyOnHigh;
+            p.EnableDiscordWebhook = !string.IsNullOrWhiteSpace(p.DiscordWebhookUrl);
+            _autoResponse.SavePolicy(p);
+            AppendLog(p.EnableDiscordWebhook
+                ? "[DONE] Discord webhook saved and enabled."
+                : "[WARN] Discord webhook cleared (disabled).");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[ERROR] Saving Discord webhook failed: {ex.Message}");
+        }
+    }
+
+    private async Task TestSlackWebhookAsync()
+    {
+        try
+        {
+            var p = _autoResponse.LoadPolicy();
+            p.SlackWebhookUrl = (SlackWebhookUrl ?? "").Trim();
+            p.SlackNotifyOnHigh = SlackNotifyOnHigh;
+            p.EnableSlackWebhook = !string.IsNullOrWhiteSpace(p.SlackWebhookUrl);
+            if (!p.EnableSlackWebhook)
+            {
+                AppendLog("[WARN] Slack test skipped: webhook is not configured.");
+                return;
+            }
+
+            var testResult = new ScanResult
+            {
+                Scanner = "WRAITH",
+                Mode = "test",
+                Timestamp = DateTime.Now,
+                Findings = new List<ThreatFinding>
+                {
+                    new()
+                    {
+                        Severity = Severity.Critical,
+                        Category = "integrations",
+                        Subcategory = "slack",
+                        Title = "Slack webhook test",
+                        Path = ScanPath,
+                        Reason = "Manual Slack test from WRAITH settings"
+                    }
+                },
+                Summary = new ScanSummary { Critical = 1, High = 0, Medium = 0, Low = 0, Info = 0, Total = 1 }
+            };
+
+            var testSoar = new AutomatedResponseReport();
+            var (sent, msg) = await _alerting.SendSlackAlertAsync(testResult, testSoar, ScanPath, p);
+            AppendLog(sent ? "[DONE] Slack test alert sent." : $"[WARN] Slack test failed: {msg}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[ERROR] Slack test error: {ex.Message}");
+        }
+    }
+
+    private async Task TestDiscordWebhookAsync()
+    {
+        try
+        {
+            var p = _autoResponse.LoadPolicy();
+            p.DiscordWebhookUrl = (DiscordWebhookUrl ?? "").Trim();
+            p.DiscordNotifyOnHigh = DiscordNotifyOnHigh;
+            p.EnableDiscordWebhook = !string.IsNullOrWhiteSpace(p.DiscordWebhookUrl);
+            if (!p.EnableDiscordWebhook)
+            {
+                AppendLog("[WARN] Discord test skipped: webhook is not configured.");
+                return;
+            }
+
+            var testResult = new ScanResult
+            {
+                Scanner = "WRAITH",
+                Mode = "test",
+                Timestamp = DateTime.Now,
+                Findings = new List<ThreatFinding>
+                {
+                    new()
+                    {
+                        Severity = Severity.Critical,
+                        Category = "integrations",
+                        Subcategory = "discord",
+                        Title = "Discord webhook test",
+                        Path = ScanPath,
+                        Reason = "Manual Discord test from WRAITH settings"
+                    }
+                },
+                Summary = new ScanSummary { Critical = 1, High = 0, Medium = 0, Low = 0, Info = 0, Total = 1 }
+            };
+
+            var testSoar = new AutomatedResponseReport();
+            var (sent, msg) = await _alerting.SendDiscordAlertAsync(testResult, testSoar, ScanPath, p);
+            AppendLog(sent ? "[DONE] Discord test alert sent." : $"[WARN] Discord test failed: {msg}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[ERROR] Discord test error: {ex.Message}");
         }
     }
 
@@ -1011,6 +1289,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
         OnPropertyChanged(nameof(LowCount));
         OnPropertyChanged(nameof(InfoCount));
         OnPropertyChanged(nameof(TotalCount));
+        NotifySocStateChanged();
     }
 
     // ── Batch flush (called by _flushTimer on the UI thread) ──────────────
@@ -1059,6 +1338,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
             OnPropertyChanged(nameof(LowCount));
             OnPropertyChanged(nameof(InfoCount));
             OnPropertyChanged(nameof(TotalCount));
+            NotifySocStateChanged();
         }
     }
 
@@ -1123,6 +1403,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
             FilteredFindings.Add(f);
         }
         OnPropertyChanged(nameof(TotalCount));
+        NotifySocStateChanged();
     }
 
     // ── Sort column ───────────────────────────────────────────────────
@@ -1179,6 +1460,40 @@ $result | ConvertTo-Json -Depth 8 -Compress
         LowCount  = AllFindings.Count(f => f.Severity == Severity.Low);
         InfoCount = AllFindings.Count(f => f.Severity == Severity.Info);
         OnPropertyChanged(nameof(TotalCount));
+        NotifySocStateChanged();
+    }
+
+    private static string MapPhaseToModule(string phase)
+    {
+        if (string.IsNullOrWhiteSpace(phase)) return "Initialization";
+
+        var p = phase.ToLowerInvariant();
+        if (p.Contains("persistence")) return "Persistence and Autoruns";
+        if (p.Contains("yara")) return "YARA Rule Matching";
+        if (p.Contains("heuristic")) return "Heuristic Entropy Analysis";
+        if (p.Contains("event")) return "Windows Event Correlation";
+        if (p.Contains("npm")) return "Supply-Chain Inspection";
+        if (p.Contains("process")) return "Live Process Analysis";
+        if (p.Contains("network")) return "Network and C2 Detection";
+        if (p.Contains("security")) return "Windows Security Posture";
+        if (p.Contains("rootkit")) return "Rootkit and Driver Integrity";
+        if (p.Contains("ads")) return "Alternate Data Stream Detection";
+        if (p.Contains("browser")) return "Browser Integrity";
+        if (p.Contains("defender")) return "Defender Integration";
+        if (p.Contains("credential")) return "Credential Exposure Audit";
+        if (p.Contains("kev")) return "CISA KEV Correlation";
+        if (p.Contains("native")) return "Native File Scanner";
+        if (p.Contains("complete")) return "Scan Finalization";
+        return phase;
+    }
+
+    private void NotifySocStateChanged()
+    {
+        OnPropertyChanged(nameof(SocIncidentTitle));
+        OnPropertyChanged(nameof(SocIncidentDetail));
+        OnPropertyChanged(nameof(SocCurrentModule));
+        OnPropertyChanged(nameof(SocTelemetryLine));
+        OnPropertyChanged(nameof(SocRecommendedAction));
     }
 
     // ── Logging ───────────────────────────────────────────────────────

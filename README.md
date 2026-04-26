@@ -78,7 +78,29 @@ Filter by severity (CRITICAL → INFO) in real time without re-running. Scan-roo
 
 After the scan the summary bar shows counts per severity tier. Select any finding tied to a live process and hit **Kill Process** — WRAITH confirms PID and name before terminating. No silent kills.
 
+
+### Start menu try for automated, persistance and Quarantine Vault
+<p align="center">
+  <img src="WRAITH/Assets/menu.png" alt="WRAITH start menu automated control feature" width="800"/>
+</p>
+
 </details>
+
+### Remote monitoring
+Tie in a Slack or Discord webhook to push SOC alerts from the running machine to your selected server. Findings are formatted as bordered ASCII tables for clean rendering in notification channels. This feature is active and working.
+<p align="center">
+  <img src="WRAITH/Assets/hook.png" alt="WRAITH SOC Alert webhook feature" width="800"/>
+</p>
+
+</details>
+
+### Auto-Quarantine & Trust Gates
+WRAITH's automated response engine evaluates every finding against a **two-gate trust system** before any containment action:
+
+1. **Trusted path** — paths matching prefixes in `wraith.policy.json` (e.g. `C:\Windows\`, `C:\Program Files\`, `%USERPROFILE%\AppData\Local\Packages\Microsoft.*`) are always skipped, regardless of severity.
+2. **Trusted signer** — files signed by a keyword-matched subject in `TrustedSignerKeywords` are always skipped.
+
+Both gates apply to **all** severity levels including Critical — a Critical YARA hit on a Microsoft-signed Windows DLL will not be quarantined. Policy paths support environment variable tokens (`%USERPROFILE%`, `%SYSTEMROOT%`, etc.) which are expanded at runtime.
 
 ---
 
@@ -121,7 +143,7 @@ LAUNCH.bat
 | **Network** | Outbound connections to suspicious ranges, listening ports, unusual DNS activity |
 | **Events** | Windows Event Log anomaly parsing (configurable look-back window, 1–720 h) |
 | **CISA KEV** | Live check of CISA's Known Exploited Vulnerabilities catalogue against installed software |
-| **NPM Supply Chain** | Typosquat and dependency-confusion checks across local npm projects |
+| **npm / .NET Supply Chain** | 200+ indicator typosquat and dependency-confusion checks across npm, NuGet, Node.js, and AI/ML package ecosystems — including AI API key harvesters, LLM provider typosquats, CVE-flagged packages, and cryptominer drop packages; AI API key exfiltration patterns detected in postinstall scripts |
 | **Windows Security** | Firewall state, Defender status, audit policy gaps, UAC configuration |
 | **Rootkit** | SSDT / IDT hooks, hidden drivers, DKOM object unlinking indicators |
 | **ADS** | Alternate Data Streams on NTFS — a classic hiding place for payloads |

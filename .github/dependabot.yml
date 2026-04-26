@@ -16,6 +16,15 @@ updates:
       - "dotnet"
     commit-message:
       prefix: "nuget"
+    cooldown:
+      default-days: 3
+      semver-major-days: 15
+      semver-minor-days: 8
+      semver-patch-days: 2
+      include:
+        - "*"
+      exclude:
+        - "critical-security-patch"
 
   - package-ecosystem: "pip"
     directory: "/scanner"
@@ -27,6 +36,15 @@ updates:
       - "python"
     commit-message:
       prefix: "pip"
+    cooldown:
+      default-days: 3
+      semver-major-days: 15
+      semver-minor-days: 8
+      semver-patch-days: 2
+      include:
+        - "*"
+      exclude:
+        - "critical-security-patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -38,3 +56,12 @@ updates:
       - "github-actions"
     commit-message:
       prefix: "actions"
+    cooldown:
+      default-days: 3
+      semver-major-days: 15
+      semver-minor-days: 8
+      semver-patch-days: 2
+      include:
+        - "*"
+      exclude:
+        - "critical-security-patch"

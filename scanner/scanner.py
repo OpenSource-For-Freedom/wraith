@@ -156,11 +156,41 @@ def log(msg: str) -> None:
     print(f"[WRAITH] {msg}", file=sys.stderr)
 
 
+def _normalize_path_lower(p: str) -> str:
+    if not p:
+        return ""
+    try:
+        return os.path.abspath(p).replace("/", "\\").rstrip("\\").lower()
+    except Exception:
+        return p.replace("/", "\\").rstrip("\\").lower()
+
+
+def _is_system_root_path(p: str) -> bool:
+    norm = _normalize_path_lower(p)
+    if not norm:
+        return True
+    drive = os.environ.get("SystemDrive", "C:").rstrip("\\").lower()
+    return norm == drive
+
+
 # ── Mode: persistence ─────────────────────────────────────────────────────
 def scan_persistence(path: str) -> List[Dict]:
     """Checks registry run keys, startup folders, scheduled tasks, services."""
     findings: List[Dict] = []
     import subprocess, re
+
+    target_root = _normalize_path_lower(path)
+    scoped = bool(target_root) and not _is_system_root_path(target_root)
+
+    def in_scope(text: str) -> bool:
+        if not scoped:
+            return True
+        if not text:
+            return False
+        return target_root in text.replace("/", "\\").lower()
+
+    if scoped:
+        log(f"Persistence scan scoped to target path: {target_root}")
 
     # ── Registry run keys ────────────────────────────────────────────────
     run_keys = [
@@ -203,6 +233,8 @@ def scan_persistence(path: str) -> List[Dict]:
                     ]
                 ):
                     sev = "HIGH"
+                if not in_scope(value):
+                    continue
                 findings.append(
                     {
                         "title": f"Autorun: {name}",
@@ -232,6 +264,8 @@ def scan_persistence(path: str) -> List[Dict]:
                 continue
             sev = "MEDIUM"
             lower = item.name.lower()
+            if not in_scope(str(item)):
+                continue
             findings.append(
                 {
                     "title": f"Startup item: {item.name}",
@@ -316,6 +350,8 @@ Get-ScheduledTask | Where-Object {$_.State -ne 'Disabled'} | ForEach-Object {
                     x in action for x in ["powershell", "cmd", "wscript", "cscript"]
                 ):
                     sev = "LOW"
+                if not in_scope(t.get("Action", "")):
+                    continue
                 if sev != "INFO":
                     f = {
                         "title": f"Scheduled Task: {name}",
@@ -373,6 +409,8 @@ Get-CimInstance Win32_Service | Where-Object {$_.StartMode -in @('Auto','Manual'
                     reason = (
                         f"Service binary in suspicious path: {svc.get('PathName','')}"
                     )
+                if not in_scope(svc.get("PathName", "")):
+                    continue
                 if sev != "INFO":
                     f = {
                         "title": f"Service: {svc.get('DisplayName', name)}",

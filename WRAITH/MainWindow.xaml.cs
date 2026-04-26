@@ -18,6 +18,8 @@ namespace WRAITH;
 public partial class MainWindow : Window
 {
     private readonly List<Storyboard> _patronusBoards = new();
+    private readonly AutomationMenuService _automation = new();
+    private System.Windows.Forms.NotifyIcon? _trayIcon;
 
     // ── Ghost wraith ambient sweep ─────────────────────────────────────
     private readonly DispatcherTimer _ghostTimer = new();
@@ -106,6 +108,8 @@ public partial class MainWindow : Window
         // subscribed to DataContextChanged, so wire up the existing ViewModel now.
         if (DataContext is MainViewModel existingVm)
             existingVm.PropertyChanged += VmPropertyChanged;
+
+        SetupTrayIcon();
     }
 
     // ── Hook into ViewModel events ─────────────────────────────────────
@@ -181,6 +185,157 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SetupTrayIcon()
+    {
+        try
+        {
+            var icon = ResolveAppIcon();
+
+            _trayIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = icon,
+                Text = "WRAITH",
+                Visible = true,
+            };
+
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+
+            var openItem = new System.Windows.Forms.ToolStripMenuItem("Open WRAITH");
+            openItem.Click += (_, _) => Dispatcher.Invoke(() =>
+            {
+                Show();
+                WindowState = WindowState.Normal;
+                Activate();
+            });
+
+            var autoScan = new System.Windows.Forms.ToolStripMenuItem("Auto Scan Schedule");
+            AddScheduleItem(autoScan, "Every 1 hour", 60);
+            AddScheduleItem(autoScan, "Every 6 hours", 360);
+            AddScheduleItem(autoScan, "Every 8 hours", 480);
+            AddScheduleItem(autoScan, "Every 12 hours", 720);
+            AddScheduleItem(autoScan, "Every 24 hours", 1440);
+            AddScheduleItem(autoScan, "Every 48 hours", 2880);
+            AddScheduleItem(autoScan, "Every 1 week", 10080);
+
+            var disableSchedule = new System.Windows.Forms.ToolStripMenuItem("Disable auto scan");
+            disableSchedule.Click += async (_, _) =>
+            {
+                var (ok, output) = await _automation.DisableTimedScanAsync();
+                ShowTrayResult(ok, ok ? "Auto scan disabled" : output);
+            };
+            autoScan.DropDownItems.Add(new System.Windows.Forms.ToolStripSeparator());
+            autoScan.DropDownItems.Add(disableSchedule);
+
+            var persistence = new System.Windows.Forms.ToolStripMenuItem("Persistence Scanning");
+            var enablePersistence = new System.Windows.Forms.ToolStripMenuItem("Enable");
+            enablePersistence.Click += async (_, _) =>
+            {
+                var scanPath = GetVmScanPath();
+                var (ok, output) = await _automation.EnablePersistenceListenerAsync(scanPath);
+                ShowTrayResult(ok, ok ? "Persistence scanning enabled" : output);
+            };
+            var disablePersistence = new System.Windows.Forms.ToolStripMenuItem("Disable");
+            disablePersistence.Click += async (_, _) =>
+            {
+                var (ok, output) = await _automation.DisablePersistenceListenerAsync();
+                ShowTrayResult(ok, ok ? "Persistence scanning disabled" : output);
+            };
+            persistence.DropDownItems.Add(enablePersistence);
+            persistence.DropDownItems.Add(disablePersistence);
+
+            var quarantine = new System.Windows.Forms.ToolStripMenuItem("Quarantine Vault");
+            quarantine.Click += (_, _) => Dispatcher.Invoke(() =>
+            {
+                if (DataContext is MainViewModel vm)
+                    vm.OpenQuarantineCommand.Execute(null);
+            });
+
+            var quitItem = new System.Windows.Forms.ToolStripMenuItem("Quit");
+            quitItem.Click += (_, _) => Dispatcher.Invoke(Close);
+
+            menu.Items.Add(openItem);
+            menu.Items.Add(autoScan);
+            menu.Items.Add(persistence);
+            menu.Items.Add(quarantine);
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(quitItem);
+
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += (_, _) => openItem.PerformClick();
+        }
+        catch
+        {
+            // Non-fatal: app should still run if tray icon fails.
+        }
+    }
+
+    private static System.Drawing.Icon ResolveAppIcon()
+    {
+        // 1) Best source: icon embedded in current executable.
+        try
+        {
+            var exePath = Environment.ProcessPath
+                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(exePath))
+            {
+                var extracted = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
+                if (extracted != null)
+                    return (System.Drawing.Icon)extracted.Clone();
+            }
+        }
+        catch { }
+
+        // 2) Fallback: packaged icon file from known dev/publish paths.
+        var baseDir = BootstrapService.ResolveBaseDir();
+        var candidates = new[]
+        {
+            System.IO.Path.Combine(baseDir, "WRAITH", "Assets", "wraith.ico"),
+            System.IO.Path.Combine(baseDir, "Assets", "wraith.ico"),
+            System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "wraith.ico"),
+        };
+
+        foreach (var c in candidates)
+        {
+            try
+            {
+                if (System.IO.File.Exists(c))
+                    return new System.Drawing.Icon(c);
+            }
+            catch { }
+        }
+
+        // 3) Last resort generic icon.
+        return System.Drawing.SystemIcons.Application;
+    }
+
+    private void AddScheduleItem(System.Windows.Forms.ToolStripMenuItem parent, string label, int intervalMinutes)
+    {
+        var item = new System.Windows.Forms.ToolStripMenuItem(label);
+        item.Click += async (_, _) =>
+        {
+            var scanPath = GetVmScanPath();
+            var (ok, output) = await _automation.SetTimedScanAsync(intervalMinutes, scanPath);
+            ShowTrayResult(ok, ok ? $"Auto scan set: {label}" : output);
+        };
+        parent.DropDownItems.Add(item);
+    }
+
+    private string GetVmScanPath()
+    {
+        if (DataContext is MainViewModel vm && !string.IsNullOrWhiteSpace(vm.ScanPath))
+            return vm.ScanPath;
+        return System.IO.Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\";
+    }
+
+    private void ShowTrayResult(bool ok, string message)
+    {
+        try
+        {
+            _trayIcon?.ShowBalloonTip(4000, "WRAITH", message, ok ? System.Windows.Forms.ToolTipIcon.Info : System.Windows.Forms.ToolTipIcon.Error);
+        }
+        catch { }
+    }
+
     // ── Custom chrome ──────────────────────────────────────────────────
     private void TitleBar_MouseDown(object s, System.Windows.Input.MouseButtonEventArgs e)
     {
@@ -200,6 +355,21 @@ public partial class MainWindow : Window
     private void ToggleMaximize()
         => WindowState = WindowState == WindowState.Maximized
                ? WindowState.Normal : WindowState.Maximized;
+
+    protected override void OnClosed(EventArgs e)
+    {
+        try
+        {
+            if (_trayIcon != null)
+            {
+                _trayIcon.Visible = false;
+                _trayIcon.Dispose();
+                _trayIcon = null;
+            }
+        }
+        catch { }
+        base.OnClosed(e);
+    }
 
     // ── Folder browse ─────────────────────────────────────────────────
     private void BtnBrowse_Click(object s, RoutedEventArgs e)

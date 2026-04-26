@@ -1,0 +1,31 @@
+{
+  "AutoContainmentEnabled": true,
+  "AutoKillLiveProcess": true,
+  "AutoQuarantineFile": false,
+  "AutoQuarantineCritical": true,
+  "MaxActionsPerScan": 3,
+  "MinAnomalyScoreForAction": 85.0,
+  "TrustedPathPrefixes": [
+    "C:\\Windows\\",
+    "C:\\Program Files\\",
+    "C:\\Program Files (x86)\\",
+    "%USERPROFILE%\\AppData\\Local\\Packages\\MicrosoftWindows.",
+    "%USERPROFILE%\\AppData\\Local\\Packages\\Microsoft.",
+    "C:\\ProgramData\\Microsoft\\",
+    "%USERPROFILE%\\AppData\\Local\\Microsoft\\"
+  ],
+  "TrustedSignerKeywords": [
+    "Microsoft Corporation",
+    "Google LLC",
+    "Apple Inc.",
+    "Lenovo",
+    "NVIDIA",
+    "Intel"
+  ],
+  "EnableSlackWebhook": false,
+  "SlackWebhookUrl": "",
+  "SlackNotifyOnHigh": true,
+  "EnableDiscordWebhook": false,
+  "DiscordWebhookUrl": "",
+  "DiscordNotifyOnHigh": true
+}

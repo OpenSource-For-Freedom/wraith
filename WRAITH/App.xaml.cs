@@ -150,7 +150,14 @@ public partial class App : Application
                     if (exe != null)
                     {
                         Trace($"Restarting: {exe}");
-                        System.Diagnostics.Process.Start(exe);
+                        // UseShellExecute = false inherits the current elevated token so
+                        // Windows does NOT re-read the requireAdministrator manifest and
+                        // avoids triggering a second UAC prompt.
+                        System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(exe)
+                            {
+                                UseShellExecute = false
+                            });
                     }
                     Current.Shutdown(0);
                 };

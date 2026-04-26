@@ -78,10 +78,11 @@ PASSWORD_PATTERNS = [
 # ──────────────────────────────────────────────
 
 
-def _run_cmd(cmd: str, timeout: int = 15) -> str:
+def _run_cmd(cmd: "str | list[str]", timeout: int = 15) -> str:
     try:
+        args = cmd if isinstance(cmd, list) else cmd.split()
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, shell=True
+            args, capture_output=True, text=True, timeout=timeout
         )
         return result.stdout.strip()
     except Exception:
@@ -113,7 +114,7 @@ def check_credential_manager() -> List[Dict]:
     can be extracted by local attackers with DPAPI + user context.
     """
     findings = []
-    out = _run_cmd("cmdkey /list")
+    out = _run_cmd(["cmdkey", "/list"])
     if not out:
         return findings
 
