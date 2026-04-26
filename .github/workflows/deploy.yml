@@ -199,6 +199,9 @@ jobs:
           # Python scan engine + bundled YARA rules
           Copy-Item -Recurse ./scanner ./release/scanner
 
+          # Automation scripts required by tray menu actions
+          Copy-Item -Recurse ./automation ./release/automation
+
           # Headless quick-scan (no build needed, pure PowerShell)
           Copy-Item ./quick-scan.ps1 ./release/quick-scan.ps1
 
@@ -227,8 +230,8 @@ jobs:
           setlocal enabledelayedexpansion
 
           echo.
-          echo  ==========================================
-          echo   W R A I T H  --  Expecto Patronum
+          echo  =======================================================================
+          echo   W R A I T H  --  WINDOWS RUNTIME AUTOMATED INTELLIGENCE THREAT HUNTER
           echo  ==========================================
           echo.
 
