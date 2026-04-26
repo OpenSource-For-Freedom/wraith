@@ -218,20 +218,36 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
     start_ts = time.time()
     max_scan_seconds = 300
 
+    def normalize_dir(path: str) -> str:
+        return os.path.abspath(os.path.realpath(path))
+
+    def is_under_root(path: str, root: str) -> bool:
+        try:
+            return os.path.commonpath([path, root]) == root
+        except ValueError:
+            return False
+
     def scan_dir(base: str):
         nonlocal files_scanned
-        if not os.path.exists(base):
+        if not base or not os.path.isdir(base):
             return
-        for root, dirs, files in os.walk(base):
+        base_root = normalize_dir(base)
+        for root, dirs, files in os.walk(base_root):
             if (time.time() - start_ts) > max_scan_seconds:
                 break
+            root_abs = normalize_dir(root)
+            if not is_under_root(root_abs, base_root):
+                dirs.clear()
+                continue
             # Skip WRAITH's own .NET single-file extraction folder entirely
             if root.lower().startswith(_SELF_EXTRACT_PREFIX_LOWER):
                 dirs.clear()
                 continue
             dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS_LOWER]
             for fname in files:
-                fpath = os.path.join(root, fname)
+                fpath = normalize_dir(os.path.join(root_abs, fname))
+                if not is_under_root(fpath, base_root):
+                    continue
                 if fpath in scanned:
                     continue
                 if Path(fpath).suffix.lower() not in SCAN_EXT:
@@ -246,10 +262,12 @@ def scan_heuristics(scan_path: str) -> Dict[str, Any]:
                 findings.extend(hits)
 
     roots: List[str] = []
-    if scan_path and os.path.exists(scan_path):
-        roots = [scan_path]
+    if scan_path and os.path.isdir(scan_path):
+        roots = [normalize_dir(scan_path)]
     else:
-        roots = [p for p in HEURISTIC_SCAN_PATHS if p]
+        roots = [
+            normalize_dir(p) for p in HEURISTIC_SCAN_PATHS if p and os.path.isdir(p)
+        ]
 
     for p in roots:
         scan_dir(p)

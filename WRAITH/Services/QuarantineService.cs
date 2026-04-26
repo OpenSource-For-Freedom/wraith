@@ -32,6 +32,19 @@ public sealed class QuarantineService
 
     public string VaultDirectory => _vaultDir;
 
+    private static string NormalizeFullPath(string path)
+    {
+        return Path.GetFullPath(path);
+    }
+
+    private static bool IsUnderRoot(string fullPath, string rootPath)
+    {
+        var full = NormalizeFullPath(fullPath);
+        var root = NormalizeFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                   + Path.DirectorySeparatorChar;
+        return full.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+    }
+
     public IReadOnlyList<QuarantineRecord> GetRecords()
     {
         lock (_sync)
@@ -44,22 +57,26 @@ public sealed class QuarantineService
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("file path is required", nameof(filePath));
-        if (!File.Exists(filePath))
-            throw new FileNotFoundException("File not found", filePath);
+        var sourcePath = NormalizeFullPath(filePath);
+        if (!File.Exists(sourcePath))
+            throw new FileNotFoundException("File not found", sourcePath);
 
         lock (_sync)
         {
             var id = Guid.NewGuid().ToString("N");
-            var fileName = Path.GetFileName(filePath);
+            var fileName = Path.GetFileName(sourcePath);
             var safeName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{id}_{fileName}";
-            var dest = Path.Combine(_vaultDir, safeName);
+            var dest = NormalizeFullPath(Path.Combine(_vaultDir, safeName));
 
-            File.Move(filePath, dest);
+            if (!IsUnderRoot(dest, _vaultDir))
+                throw new InvalidOperationException("Resolved quarantine destination is outside the vault directory.");
+
+            File.Move(sourcePath, dest);
 
             var rec = new QuarantineRecord
             {
                 Id = id,
-                OriginalPath = filePath,
+                OriginalPath = sourcePath,
                 QuarantinedPath = dest,
                 Sha256 = ComputeSha256(dest),
                 QuarantinedAtUtc = DateTime.UtcNow,
@@ -84,13 +101,25 @@ public sealed class QuarantineService
         {
             var index = LoadIndex();
             var rec = index.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
-            if (rec == null || rec.Deleted || !File.Exists(rec.QuarantinedPath)) return false;
+            if (rec == null || rec.Deleted) return false;
 
-            var targetDir = Path.GetDirectoryName(rec.OriginalPath);
+            var quarantinedPath = string.IsNullOrWhiteSpace(rec.QuarantinedPath)
+                ? string.Empty
+                : NormalizeFullPath(rec.QuarantinedPath);
+            if (string.IsNullOrWhiteSpace(quarantinedPath) || !IsUnderRoot(quarantinedPath, _vaultDir) || !File.Exists(quarantinedPath))
+                return false;
+
+            var originalPath = string.IsNullOrWhiteSpace(rec.OriginalPath)
+                ? string.Empty
+                : NormalizeFullPath(rec.OriginalPath);
+            if (string.IsNullOrWhiteSpace(originalPath))
+                return false;
+
+            var targetDir = Path.GetDirectoryName(originalPath);
             if (string.IsNullOrWhiteSpace(targetDir)) return false;
             Directory.CreateDirectory(targetDir);
 
-            var target = rec.OriginalPath;
+            var target = originalPath;
             if (File.Exists(target))
             {
                 var baseName = Path.GetFileNameWithoutExtension(target);
@@ -98,7 +127,9 @@ public sealed class QuarantineService
                 target = Path.Combine(targetDir, $"{baseName}_restored_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
             }
 
-            File.Move(rec.QuarantinedPath, target);
+            target = NormalizeFullPath(target);
+
+            File.Move(quarantinedPath, target);
             restoredPath = target;
             rec.QuarantinedPath = string.Empty;
             SaveIndex(index);
@@ -118,8 +149,11 @@ public sealed class QuarantineService
             var rec = index.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             if (rec == null) return false;
 
-            if (!string.IsNullOrWhiteSpace(rec.QuarantinedPath) && File.Exists(rec.QuarantinedPath))
-                File.Delete(rec.QuarantinedPath);
+            var quarantinedPath = string.IsNullOrWhiteSpace(rec.QuarantinedPath)
+                ? string.Empty
+                : NormalizeFullPath(rec.QuarantinedPath);
+            if (!string.IsNullOrWhiteSpace(quarantinedPath) && IsUnderRoot(quarantinedPath, _vaultDir) && File.Exists(quarantinedPath))
+                File.Delete(quarantinedPath);
 
             rec.Deleted = true;
             rec.QuarantinedPath = string.Empty;

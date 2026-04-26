@@ -16,6 +16,9 @@ public static class UpdateService
 {
     private const string RepoUrl = "https://github.com/OpenSource-For-Freedom/wraith";
     private static readonly SemaphoreSlim _checkGate = new(1, 1);
+    private static readonly string _logDir = Path.GetFullPath(
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WRAITH", "Logs"));
+    private static readonly string _logFile = Path.Combine(_logDir, "wraith-update.log");
 
     /// <summary>
     /// Fired on the UI thread when an update has been fully downloaded.
@@ -33,8 +36,8 @@ public static class UpdateService
     {
         try
         {
-            var f = Path.Combine(Path.GetTempPath(), "wraith-update.log");
-            File.AppendAllText(f, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+            Directory.CreateDirectory(_logDir);
+            File.AppendAllText(_logFile, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
         }
         catch
         {
