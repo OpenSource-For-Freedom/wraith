@@ -57,19 +57,30 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $base = (Get-Content VERSION -Raw).Trim()   # e.g. "1.0"
+          $raw = (Get-Content VERSION -Raw).Trim()
+          $parts = $raw.Split('.')
+          if ($parts.Count -lt 2 -or $parts.Count -gt 3) {
+            throw "VERSION must be 'major.minor' or 'major.minor.patch'. Got: '$raw'"
+          }
+
+          $major = [int]$parts[0]
+          $minor = [int]$parts[1]
+          $seedPatch = if ($parts.Count -eq 3) { [int]$parts[2] } else { 0 }
+          $mm = "$major.$minor"
 
           git fetch --tags --quiet
-          $tags     = git tag -l "v${base}.*" 2>$null
+          $tags = git tag -l "v${mm}.*" 2>$null
           $maxPatch = -1
           foreach ($t in $tags) {
-            if ($t -match "^v(\d+\.\d+)\.(\d+)$" -and $Matches[1] -eq $base) {
-              $p = [int]$Matches[2]
+            if ($t -match "^v(\d+)\.(\d+)\.(\d+)$" -and [int]$Matches[1] -eq $major -and [int]$Matches[2] -eq $minor) {
+              $p = [int]$Matches[3]
               if ($p -gt $maxPatch) { $maxPatch = $p }
             }
           }
-          $patch = $maxPatch + 1
-          $v     = "v${base}.${patch}"
+
+          # Always emit 3-part semver. If VERSION includes a patch seed, respect it as a minimum.
+          $patch = [Math]::Max($seedPatch, $maxPatch + 1)
+          $v = "v$major.$minor.$patch"
 
           # Tag this commit and push so the release has a proper ref
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -378,6 +389,9 @@ jobs:
         shell: pwsh
         run: |
           $v = "${{ steps.ver.outputs.version }}".TrimStart("v")
+          if ($v -notmatch '^\d+\.\d+\.\d+$') {
+            throw "--packVersion must be SemVer2 3-part (x.y.z). Got: '$v'"
+          }
           vpk pack `
             --packId WRAITH `
             --packVersion $v `
