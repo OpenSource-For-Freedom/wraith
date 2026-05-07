@@ -1,6 +1,6 @@
 yara-python>=4.5.4
 pywin32>=306
-psutil>=5.9.0
+psutil>=7.2.2
 requests>=2.32.2
 colorama>=0.4.6
 
