@@ -1,7 +1,7 @@
 yara-python>=4.5.4
 pywin32>=311
 psutil>=7.2.2
-requests>=2.34.0
+requests>=2.34.2
 colorama>=0.4.6
 
 # dev / formatting
