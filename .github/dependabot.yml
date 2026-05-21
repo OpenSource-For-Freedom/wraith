@@ -46,7 +46,7 @@ updates:
       exclude:
         - "critical-security-patch"
 
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: "actions"
     directory: "/"
     schedule:
       interval: "weekly"
