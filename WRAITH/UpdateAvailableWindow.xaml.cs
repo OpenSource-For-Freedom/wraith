@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Input;
 using WRAITH.Services;
@@ -35,8 +36,12 @@ public partial class UpdateAvailableWindow : Window
 
         if (!canApply)
         {
-            UpdateBtn.IsEnabled = false;
-            UpdateBtn.ToolTip   = "Update can only be applied when running an installed build.";
+            // Portable (zip + START.bat) build — Velopack can't apply in-place.
+            // Repurpose the primary action to send the user to the download page.
+            UpdateBtn.Content   = "🌐  Open Release Page";
+            UpdateBtn.ToolTip   = "This is a portable build — download the new release manually.";
+            SubtitleBlock.Text  = "A new version of WRAITH is available. This is a portable build, " +
+                                  "so updates can't be applied in-place — open the release page to download.";
         }
     }
 
@@ -61,7 +66,23 @@ public partial class UpdateAvailableWindow : Window
 
     private void UpdateBtn_Click(object sender, RoutedEventArgs e)
     {
-        DialogResult = true;
+        if (!_canApply)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName        = UpdateService.ReleasesUrl,
+                    UseShellExecute = true,
+                });
+            }
+            catch { /* best-effort — never block close */ }
+            DialogResult = false;
+        }
+        else
+        {
+            DialogResult = true;
+        }
         Close();
     }
 

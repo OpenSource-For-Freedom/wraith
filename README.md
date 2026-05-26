@@ -31,7 +31,17 @@ A native Windows threat-hunting application that orchestrates **14 scan modules*
 
 ## Installation
 
-- Install from [release](https://github.com/OpenSource-For-Freedom/wraith/releases) packaged source.
+Two install paths — pick one. **Only the installer enables in-app auto-update.**
+
+| | **Installer (recommended)** | **Portable** |
+|---|---|---|
+| Asset | `WRAITH-Setup.exe` | `WRAITH-vX.Y.Z-win-x64.zip` |
+| Install location | `%LocalAppData%\WRAITH\` (managed by Velopack) | Anywhere — extract and run |
+| Launcher | Start Menu / desktop shortcut | `START.bat` |
+| **Auto-update** | ✅ Background download, click "Restart & Apply" | ❌ Update dialog opens the release page for manual re-download |
+| Best for | Day-to-day use | Air-gapped machines, USB / forensic kits, CI |
+
+Grab either asset from the [latest release](https://github.com/OpenSource-For-Freedom/wraith/releases/latest).
 
 ---
 
@@ -115,10 +125,10 @@ Both gates apply to **all** severity levels including Critical — a Critical YA
 
 ---
 
-## Quick Start
+## Quick Start (build from source)
 
 ```bat
-git clone https://github.com/YOUR_USERNAME/wraith.git
+git clone https://github.com/OpenSource-For-Freedom/wraith.git
 cd wraith
 LAUNCH.bat
 ```
