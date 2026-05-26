@@ -122,7 +122,7 @@
                 <DataGridTextColumn Header="Vault File" Binding="{Binding QuarantinedPath}" Width="220"/>
                 <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="200"/>
                 <DataGridTextColumn Header="SHA256" Binding="{Binding Sha256}" Width="200"/>
-                <DataGridTextColumn Header="Deleted" Binding="{Binding Deleted}" Width="80"/>
+                <DataGridTextColumn Header="State" Binding="{Binding State}" Width="110"/>
             </DataGrid.Columns>
         </DataGrid>
 

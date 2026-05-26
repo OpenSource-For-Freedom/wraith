@@ -56,31 +56,65 @@ public partial class QuarantineWindow : Window
 
     private void Restore_Click(object sender, RoutedEventArgs e)
     {
-        var rec = GetSelectedRecords().FirstOrDefault() ?? Selected;
-        if (rec == null)
+        var selected = GetSelectedRecords();
+        if (selected.Count == 0)
         {
             MessageBox.Show("Select a quarantined item first.", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(rec.QuarantinedPath))
+        var pending = selected
+            .Where(r => !r.Restored && !r.Deleted && !string.IsNullOrWhiteSpace(r.QuarantinedPath))
+            .ToList();
+
+        if (pending.Count == 0)
         {
-            MessageBox.Show("This item has already been restored or deleted.", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Selected item(s) have already been restored or deleted.",
+                "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
         var confirm = MessageBox.Show(
-            $"Restore file back to disk?\n\nOriginal: {rec.OriginalPath}",
+            pending.Count == 1
+                ? $"Restore file back to disk?\n\nOriginal: {pending[0].OriginalPath}"
+                : $"Restore {pending.Count} files back to their original locations?",
             "Restore quarantined file",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
         if (confirm != MessageBoxResult.Yes) return;
 
-        if (_quarantine.Restore(rec.Id, out var restoredPath))
-            MessageBox.Show($"File restored to:\n{restoredPath}", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
+        int restored = 0;
+        int failed   = 0;
+        string lastPath = string.Empty;
+
+        foreach (var rec in pending)
+        {
+            try
+            {
+                if (_quarantine.Restore(rec.Id, out var path))
+                {
+                    restored++;
+                    lastPath = path;
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+            catch
+            {
+                failed++;
+            }
+        }
+
+        if (restored == 1 && failed == 0)
+            MessageBox.Show($"File restored to:\n{lastPath}", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
+        else if (failed == 0)
+            MessageBox.Show($"Restored {restored} item(s).", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
         else
-            MessageBox.Show("Restore failed. The vault file may be missing.", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show($"Restored {restored} item(s), failed {failed} item(s). The vault file may be missing or the target path unwritable.",
+                "WRAITH", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         LoadData();
     }
@@ -104,28 +138,35 @@ public partial class QuarantineWindow : Window
 
         if (confirm != MessageBoxResult.Yes) return;
 
-        try
-        {
-            int deleted = 0;
-            int failed = 0;
+        int deleted = 0;
+        int failed  = 0;
+        string? lastError = null;
 
-            foreach (var rec in records)
+        foreach (var rec in records)
+        {
+            // Per-item try/catch — a single locked vault file (e.g. AV scanner
+            // holding a handle) must not abort the rest of the batch.
+            try
             {
                 if (_quarantine.DeleteFromVault(rec.Id, requireAdmin: false))
                     deleted++;
                 else
                     failed++;
             }
+            catch (Exception ex)
+            {
+                failed++;
+                lastError = ex.Message;
+            }
+        }
 
-            if (failed == 0)
-                MessageBox.Show($"Deleted {deleted} quarantined item(s).", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
-            else
-                MessageBox.Show($"Deleted {deleted} item(s), failed {failed} item(s).", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Delete failed: {ex.Message}", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        if (failed == 0)
+            MessageBox.Show($"Deleted {deleted} quarantined item(s).", "WRAITH", MessageBoxButton.OK, MessageBoxImage.Information);
+        else
+            MessageBox.Show(
+                $"Deleted {deleted} item(s), failed {failed} item(s)." +
+                (lastError != null ? $"\n\nLast error: {lastError}" : ""),
+                "WRAITH", MessageBoxButton.OK, MessageBoxImage.Warning);
 
         LoadData();
     }

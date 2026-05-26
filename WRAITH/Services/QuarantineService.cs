@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace WRAITH.Services;
 
@@ -14,7 +16,18 @@ public sealed class QuarantineRecord
     public DateTime QuarantinedAtUtc { get; set; } = DateTime.UtcNow;
     public string Reason { get; set; } = string.Empty;
     public bool Deleted { get; set; }
+    public bool Restored { get; set; }
+    /// <summary>True when the original file was locked and is scheduled for deletion at next boot.</summary>
+    public bool PendingRebootDelete { get; set; }
     public string Severity { get; set; } = "Info";  // Critical, High, Medium, Low, Info
+
+    /// <summary>Computed lifecycle state for the UI — never serialised.</summary>
+    [JsonIgnore]
+    public string State =>
+        Deleted             ? "Deleted"
+        : Restored          ? "Restored"
+        : PendingRebootDelete ? "Pending Reboot"
+                              : "Quarantined";
 }
 
 public sealed class QuarantineService
@@ -71,7 +84,33 @@ public sealed class QuarantineService
             if (!IsUnderRoot(dest, _vaultDir))
                 throw new InvalidOperationException("Resolved quarantine destination is outside the vault directory.");
 
-            File.Move(sourcePath, dest);
+            bool pendingReboot = false;
+            try
+            {
+                File.Move(sourcePath, dest);
+            }
+            catch (IOException)
+            {
+                // Source is locked (mapped into a running process, AV scanner open handle, etc.).
+                // Copy the bytes into the vault so we can still hash/contain them, then schedule
+                // the original for deletion at next reboot. Without this fallback the most
+                // important case (active malware) just fails outright.
+                CopyWithSharedAccess(sourcePath, dest);
+
+                if (!TryDeleteFile(sourcePath))
+                {
+                    if (!MoveFileEx(sourcePath, null, MOVEFILE_DELAY_UNTIL_REBOOT))
+                    {
+                        var err = Marshal.GetLastWin32Error();
+                        // Vault copy succeeded but we couldn't even schedule the delete.
+                        // Roll back the vault copy so we don't leak duplicates.
+                        TryDeleteFile(dest);
+                        throw new IOException(
+                            $"File is locked and could not be scheduled for reboot deletion (Win32 error {err}).");
+                    }
+                    pendingReboot = true;
+                }
+            }
 
             var rec = new QuarantineRecord
             {
@@ -82,6 +121,8 @@ public sealed class QuarantineService
                 QuarantinedAtUtc = DateTime.UtcNow,
                 Reason = reason,
                 Deleted = false,
+                Restored = false,
+                PendingRebootDelete = pendingReboot,
                 Severity = severity,
             };
 
@@ -132,6 +173,7 @@ public sealed class QuarantineService
             File.Move(quarantinedPath, target);
             restoredPath = target;
             rec.QuarantinedPath = string.Empty;
+            rec.Restored = true;
             SaveIndex(index);
             return true;
         }
@@ -149,11 +191,16 @@ public sealed class QuarantineService
             var rec = index.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             if (rec == null) return false;
 
-            var quarantinedPath = string.IsNullOrWhiteSpace(rec.QuarantinedPath)
-                ? string.Empty
-                : NormalizeFullPath(rec.QuarantinedPath);
-            if (!string.IsNullOrWhiteSpace(quarantinedPath) && IsUnderRoot(quarantinedPath, _vaultDir) && File.Exists(quarantinedPath))
-                File.Delete(quarantinedPath);
+            // No-op deletes (already restored/deleted) should report false so the
+            // UI counter reflects what actually happened on disk.
+            if (rec.Deleted || rec.Restored || string.IsNullOrWhiteSpace(rec.QuarantinedPath))
+                return false;
+
+            var quarantinedPath = NormalizeFullPath(rec.QuarantinedPath);
+            if (!IsUnderRoot(quarantinedPath, _vaultDir) || !File.Exists(quarantinedPath))
+                return false;
+
+            File.Delete(quarantinedPath);
 
             rec.Deleted = true;
             rec.QuarantinedPath = string.Empty;
@@ -194,7 +241,16 @@ public sealed class QuarantineService
     private void SaveIndex(List<QuarantineRecord> records)
     {
         var json = JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_indexFile, json);
+        // Write to a sibling temp file and atomically swap. A crash during the
+        // write must never leave the live index truncated — that would make the
+        // whole vault appear empty even though the files still exist on disk.
+        var tmp = _indexFile + ".tmp";
+        File.WriteAllText(tmp, json);
+
+        if (File.Exists(_indexFile))
+            File.Replace(tmp, _indexFile, destinationBackupFileName: null);
+        else
+            File.Move(tmp, _indexFile);
     }
 
     private static string ComputeSha256(string path)
@@ -204,4 +260,31 @@ public sealed class QuarantineService
         var hash = sha.ComputeHash(stream);
         return Convert.ToHexString(hash);
     }
+
+    private static void CopyWithSharedAccess(string source, string dest)
+    {
+        // Permissive share flags so we can read a file that's currently mapped
+        // into a running process. The destination is a fresh file in the vault,
+        // so CreateNew + FileShare.None is correct there.
+        using var src = new FileStream(source, FileMode.Open, FileAccess.Read,
+                                       FileShare.ReadWrite | FileShare.Delete);
+        using var dst = new FileStream(dest, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        src.CopyTo(dst);
+    }
+
+    private static bool TryDeleteFile(string path)
+    {
+        try { File.Delete(path); return true; }
+        catch { return false; }
+    }
+
+    // ── Win32 fallback for locked sources ────────────────────────────────────
+    // Passing null for lpNewFileName with MOVEFILE_DELAY_UNTIL_REBOOT instructs
+    // the Session Manager (smss.exe) to delete the file on next boot before any
+    // user process can re-open it. Requires admin — the app manifest guarantees
+    // that here.
+    private const uint MOVEFILE_DELAY_UNTIL_REBOOT = 0x00000004;
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool MoveFileEx(string lpExistingFileName, string? lpNewFileName, uint dwFlags);
 }
