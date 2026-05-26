@@ -15,6 +15,9 @@ namespace WRAITH.Services;
 public static class UpdateService
 {
     private const string RepoUrl = "https://github.com/OpenSource-For-Freedom/wraith";
+
+    /// <summary>Public link to the latest release — surfaced when auto-apply is unavailable.</summary>
+    public const string ReleasesUrl = RepoUrl + "/releases/latest";
     private static readonly SemaphoreSlim _checkGate = new(1, 1);
     private static readonly string _logDir = Path.GetFullPath(
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WRAITH", "Logs"));
@@ -52,6 +55,8 @@ public static class UpdateService
         {
             Trace("CheckForUpdatesAsync: begin");
             _mgr = new UpdateManager(new GithubSource(RepoUrl, null, false));
+            var installed = _mgr.IsInstalled;
+            Trace($"CheckForUpdatesAsync: IsInstalled={installed}");
 
             _pendingUpdate = await _mgr.CheckForUpdatesAsync();
             if (_pendingUpdate == null)
@@ -60,13 +65,23 @@ public static class UpdateService
                 return;
             }
 
-            await _mgr.DownloadUpdatesAsync(_pendingUpdate);
+            // Only download the payload when we can actually apply it.
+            // Portable (zip + START.bat) builds report IsInstalled=false; downloading
+            // the nupkg would waste 50+ MB for an apply that can never run.
+            if (installed)
+            {
+                await _mgr.DownloadUpdatesAsync(_pendingUpdate);
+                Trace("CheckForUpdatesAsync: payload downloaded");
+            }
+            else
+            {
+                Trace("CheckForUpdatesAsync: portable build — skipping download, prompting for manual update");
+            }
 
             var newVersion     = _pendingUpdate.TargetFullRelease.Version.ToString();
             var changelog      = _pendingUpdate.TargetFullRelease.NotesMarkdown ?? string.Empty;
             var currentVersion = Assembly.GetExecutingAssembly()
                                          .GetName().Version?.ToString(3) ?? "unknown";
-            var installed      = _mgr.IsInstalled;
 
             Trace($"CheckForUpdatesAsync: update ready current={currentVersion} new={newVersion} installed={installed}");
 

@@ -395,11 +395,33 @@ jobs:
           if ($v -notmatch '^\d+\.\d+\.\d+$') {
             throw "--packVersion must be SemVer2 3-part (x.y.z). Got: '$v'"
           }
+
+          # Pull the [Unreleased] section out of CHANGELOG.md and write it next to
+          # the publish dir so vpk embeds it in the nupkg. The in-app update dialog
+          # surfaces this text via TargetFullRelease.NotesMarkdown — without it the
+          # user just sees "No release notes were provided for this version."
+          $notes = ""
+          if (Test-Path CHANGELOG.md) {
+            $lines = Get-Content CHANGELOG.md
+            $start = ($lines | Select-String -Pattern '^##\s' | Select-Object -First 1).LineNumber
+            if ($start) {
+              $tail  = $lines[$start..($lines.Length - 1)]
+              $stop  = ($tail | Select-String -Pattern '^##\s' | Select-Object -First 1).LineNumber
+              $notes = if ($stop) { $tail[0..($stop - 2)] -join "`n" } else { $tail -join "`n" }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            $notes = "Release $v — see https://github.com/OpenSource-For-Freedom/wraith/releases/tag/v$v"
+          }
+          $notesPath = "./release-notes.md"
+          Set-Content -Path $notesPath -Value $notes -Encoding UTF8
+
           vpk pack `
             --packId WRAITH `
             --packVersion $v `
             --packDir ./publish-velopack `
             --mainExe WRAITH.exe `
+            --releaseNotes $notesPath `
             --outputDir ./velopack-out
           Write-Host "Velopack output:"
           Get-ChildItem ./velopack-out | Select-Object Name, Length
