@@ -73,10 +73,11 @@ jobs:
             # intentionally; if it's a backport the GitHub server will
             # decline to mark it latest via make_latest=legacy.
             $v = $env:REF_NAME
-            if ($v -notmatch '^v\d+\.\d+\.\d+$') {
+            if ($v -notmatch '^v(\d+)\.(\d+)\.(\d+)$') {
               throw "Tag '$v' does not match vMAJOR.MINOR.PATCH (the trigger filter should have prevented this)."
             }
             $packVer      = $v.TrimStart('v')
+            $assemblyVer  = "$packVer.0"
             $prerelease   = 'false'
             $makeLatest   = 'legacy'   # GitHub server picks latest by SemVer
             Write-Host "Stable release: $v"
@@ -128,10 +129,16 @@ Bump VERSION to '$suggested' (or higher) and push again.
 
             # Prereleases carry the run number so multiple main pushes for
             # the same upcoming stable version don't collide on the same tag.
-            $v          = "v$nextStable-dev.$($env:RUN_NUMBER)"
-            $packVer    = "$nextStable-dev.$($env:RUN_NUMBER)"
-            $prerelease = 'true'
-            $makeLatest = 'false'
+            $v           = "v$nextStable-dev.$($env:RUN_NUMBER)"
+            $packVer     = "$nextStable-dev.$($env:RUN_NUMBER)"
+            # AssemblyVersion is the 4-part numeric and can't carry -dev.N.
+            # Velopack's portable-mode fallback compares this against the
+            # latest .nupkg version, so it must reflect the next-stable
+            # target — not the previous stable, or the popup will fire
+            # forever for portable users on the prior release.
+            $assemblyVer = "$nextStable.0"
+            $prerelease  = 'true'
+            $makeLatest  = 'false'
             Write-Host "Prerelease build: $v (next stable would be v$nextStable)"
           }
 
@@ -141,6 +148,7 @@ Bump VERSION to '$suggested' (or higher) and push again.
 
           Write-Output "version=$v"                       >> $env:GITHUB_OUTPUT
           Write-Output "pack_version=$packVer"            >> $env:GITHUB_OUTPUT
+          Write-Output "assembly_version=$assemblyVer"    >> $env:GITHUB_OUTPUT
           Write-Output "zip=WRAITH-${v}-win-x64.zip"      >> $env:GITHUB_OUTPUT
           Write-Output "prerelease=$prerelease"           >> $env:GITHUB_OUTPUT
           Write-Output "make_latest=$makeLatest"          >> $env:GITHUB_OUTPUT
@@ -149,6 +157,11 @@ Bump VERSION to '$suggested' (or higher) and push again.
       - name: Publish WRAITH (self-contained, win-x64)
         shell: pwsh
         run: |
+          # Stamp the real version into the binary. Without this the csproj
+          # default (1.0.0) is what Velopack's portable-mode fallback reads
+          # via Assembly.GetEntryAssembly().GetName().Version, so every
+          # release-vs-installed comparison would be wrong for users who
+          # downloaded the zip from the website.
           dotnet publish WRAITH/WRAITH.csproj `
             --configuration Release `
             --runtime win-x64 `
@@ -157,6 +170,10 @@ Bump VERSION to '$suggested' (or higher) and push again.
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None `
             -p:DebugSymbols=false `
+            -p:Version=${{ steps.ver.outputs.pack_version }} `
+            -p:AssemblyVersion=${{ steps.ver.outputs.assembly_version }} `
+            -p:FileVersion=${{ steps.ver.outputs.assembly_version }} `
+            -p:InformationalVersion=${{ steps.ver.outputs.pack_version }} `
             --output ./publish
           Write-Host "Published files:"
           Get-ChildItem ./publish | Select-Object Name, Length
@@ -437,6 +454,10 @@ Bump VERSION to '$suggested' (or higher) and push again.
             --self-contained true `
             -p:DebugType=None `
             -p:DebugSymbols=false `
+            -p:Version=${{ steps.ver.outputs.pack_version }} `
+            -p:AssemblyVersion=${{ steps.ver.outputs.assembly_version }} `
+            -p:FileVersion=${{ steps.ver.outputs.assembly_version }} `
+            -p:InformationalVersion=${{ steps.ver.outputs.pack_version }} `
             --output ./publish-velopack
           Write-Host "Velopack publish files:"
           Get-ChildItem ./publish-velopack | Select-Object Name, Length
