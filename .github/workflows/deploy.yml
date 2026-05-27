@@ -1,8 +1,11 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # WRAITH — Build & Release
 #
-# Trigger : every push to main  →  draft pre-release  (dev build)
-#           push of v* tag       →  published release   (stable)
+# Trigger : push to main         →  prerelease build (v$NEXT-dev.$RUN, never latest)
+#           push of v*.*.* tag   →  stable release   (latest gated by SemVer compare)
+#
+# To cut a stable release: bump VERSION on main, wait for the prerelease build to
+# go green, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
 #
 # Artifact: WRAITH-<version>-win-x64.zip
 #   ├── WRAITH.exe        (self-contained, .NET runtime bundled — no SDK needed)
@@ -17,6 +20,7 @@ name: Deploy
 on:
   push:
     branches: [ main ]
+    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 permissions:
   contents:          write   
@@ -56,65 +60,90 @@ jobs:
       - name: Derive version
         id: ver
         shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          $raw = (Get-Content VERSION -Raw).Trim()
-          $parts = $raw.Split('.')
-          if ($parts.Count -lt 2 -or $parts.Count -gt 3) {
-            throw "VERSION must be 'major.minor' or 'major.minor.patch'. Got: '$raw'"
-          }
-
-          $major = [int]$parts[0]
-          $minor = [int]$parts[1]
-          $seedPatch = if ($parts.Count -eq 3) { [int]$parts[2] } else { 0 }
-
           git fetch --tags --quiet
 
-          # Bump patch within the current major.minor series.
-          $maxPatch = -1
-          foreach ($t in (git tag -l "v${major}.${minor}.*" 2>$null)) {
-            if ($t -match "^v(\d+)\.(\d+)\.(\d+)$" -and [int]$Matches[1] -eq $major -and [int]$Matches[2] -eq $minor) {
-              $p = [int]$Matches[3]
-              if ($p -gt $maxPatch) { $maxPatch = $p }
+          if ($env:REF_TYPE -eq 'tag') {
+            # ── Stable release path ───────────────────────────────────────
+            # The pushed tag IS the version. Operator made the choice
+            # intentionally; if it's a backport the GitHub server will
+            # decline to mark it latest via make_latest=legacy.
+            $v = $env:REF_NAME
+            if ($v -notmatch '^v\d+\.\d+\.\d+$') {
+              throw "Tag '$v' does not match vMAJOR.MINOR.PATCH (the trigger filter should have prevented this)."
             }
+            $packVer      = $v.TrimStart('v')
+            $prerelease   = 'false'
+            $makeLatest   = 'legacy'   # GitHub server picks latest by SemVer
+            Write-Host "Stable release: $v"
           }
-
-          # Always emit 3-part semver. If VERSION includes a patch seed, respect it as a minimum.
-          $patch    = [Math]::Max($seedPatch, $maxPatch + 1)
-          $nextVer  = [version]"$major.$minor.$patch"
-
-          # Stale-VERSION guard.
-          # A common foot-gun: someone merges to main without bumping VERSION,
-          # the derive step produces v1.0.X while v2.x.y already exists, and
-          # the release gets published as "latest" — every user gets a
-          # downgrade prompt. Refuse to publish if the derived version isn't
-          # strictly greater than the highest existing tag.
-          $maxTag = $null
-          foreach ($t in (git tag -l "v*" 2>$null)) {
-            if ($t -match '^v(\d+\.\d+\.\d+)$') {
-              $tv = [version]$Matches[1]
-              if ($null -eq $maxTag -or $tv -gt $maxTag) { $maxTag = $tv }
+          else {
+            # ── Prerelease build path (main push) ─────────────────────────
+            $raw = (Get-Content VERSION -Raw).Trim()
+            $parts = $raw.Split('.')
+            if ($parts.Count -lt 2 -or $parts.Count -gt 3) {
+              throw "VERSION must be 'major.minor' or 'major.minor.patch'. Got: '$raw'"
             }
-          }
-          if ($null -ne $maxTag -and $nextVer -le $maxTag) {
-            $suggested = "$($maxTag.Major).$($maxTag.Minor + 1)"
-            throw @"
+            $major = [int]$parts[0]
+            $minor = [int]$parts[1]
+            $seedPatch = if ($parts.Count -eq 3) { [int]$parts[2] } else { 0 }
+
+            # Next patch in this major.minor — only stable tags count,
+            # prereleases (v*-dev.N) must not influence the patch number.
+            $maxPatch = -1
+            foreach ($t in (git tag -l "v${major}.${minor}.*" 2>$null)) {
+              if ($t -match "^v(\d+)\.(\d+)\.(\d+)$" -and [int]$Matches[1] -eq $major -and [int]$Matches[2] -eq $minor) {
+                $p = [int]$Matches[3]
+                if ($p -gt $maxPatch) { $maxPatch = $p }
+              }
+            }
+            $patch       = [Math]::Max($seedPatch, $maxPatch + 1)
+            $nextStable  = [version]"$major.$minor.$patch"
+
+            # Stale-VERSION guard against the highest existing stable tag.
+            # Prevents the foot-gun where VERSION lags behind the latest
+            # stable release — without this guard a main push could ship
+            # a prerelease that, once promoted, would downgrade users.
+            $maxTag = $null
+            foreach ($t in (git tag -l "v*" 2>$null)) {
+              if ($t -match '^v(\d+\.\d+\.\d+)$') {
+                $tv = [version]$Matches[1]
+                if ($null -eq $maxTag -or $tv -gt $maxTag) { $maxTag = $tv }
+              }
+            }
+            if ($null -ne $maxTag -and $nextStable -le $maxTag) {
+              $suggested = "$($maxTag.Major).$($maxTag.Minor + 1)"
+              throw @"
 VERSION file is stale.
-  Would publish:        v$nextVer
-  Highest existing tag: v$maxTag
+  Would build prerelease for:   v$nextStable
+  Highest existing stable tag:  v$maxTag
 
-Bump VERSION to '$suggested' (or higher) and push again. Refusing to
-publish would downgrade every user via the auto-update prompt.
+Bump VERSION to '$suggested' (or higher) and push again.
 "@
+            }
+
+            # Prereleases carry the run number so multiple main pushes for
+            # the same upcoming stable version don't collide on the same tag.
+            $v          = "v$nextStable-dev.$($env:RUN_NUMBER)"
+            $packVer    = "$nextStable-dev.$($env:RUN_NUMBER)"
+            $prerelease = 'true'
+            $makeLatest = 'false'
+            Write-Host "Prerelease build: $v (next stable would be v$nextStable)"
           }
 
-          $v = "v$nextVer"
+          # NOTE: the tag is deliberately NOT pushed here. softprops/action-gh-release
+          # creates it at release time, so a build failure leaves no orphan tag.
+          # For tag-triggered runs the tag already exists and is reused as-is.
 
-          # NOTE: the tag is deliberately NOT created here. softprops/action-gh-release
-          # creates the tag at release time, so a build failure leaves no orphan tag.
-
-          Write-Output "version=$v"                  >> $env:GITHUB_OUTPUT
-          Write-Output "zip=WRAITH-${v}-win-x64.zip" >> $env:GITHUB_OUTPUT
-          Write-Host "Release version: $v"
+          Write-Output "version=$v"                       >> $env:GITHUB_OUTPUT
+          Write-Output "pack_version=$packVer"            >> $env:GITHUB_OUTPUT
+          Write-Output "zip=WRAITH-${v}-win-x64.zip"      >> $env:GITHUB_OUTPUT
+          Write-Output "prerelease=$prerelease"           >> $env:GITHUB_OUTPUT
+          Write-Output "make_latest=$makeLatest"          >> $env:GITHUB_OUTPUT
 
 
       - name: Publish WRAITH (self-contained, win-x64)
@@ -415,9 +444,11 @@ publish would downgrade every user via the auto-update prompt.
       - name: Package with Velopack
         shell: pwsh
         run: |
-          $v = "${{ steps.ver.outputs.version }}".TrimStart("v")
-          if ($v -notmatch '^\d+\.\d+\.\d+$') {
-            throw "--packVersion must be SemVer2 3-part (x.y.z). Got: '$v'"
+          # pack_version is the bare SemVer (no 'v'), with -dev.N suffix on
+          # prereleases. Velopack accepts SemVer2 with prerelease suffixes.
+          $v = "${{ steps.ver.outputs.pack_version }}"
+          if ($v -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') {
+            throw "--packVersion must be SemVer2. Got: '$v'"
           }
 
           # Pull the [Unreleased] section out of CHANGELOG.md and write it next to
@@ -462,10 +493,13 @@ publish would downgrade every user via the auto-update prompt.
         uses: softprops/action-gh-release@v3
         with:
           tag_name:              ${{ steps.ver.outputs.version }}
-          name:                  WRAITH
+          name:                  WRAITH ${{ steps.ver.outputs.version }}
           draft:                 false
-          prerelease:            false
-          make_latest:           "true"
+          prerelease:            ${{ steps.ver.outputs.prerelease }}
+          # 'legacy' = GitHub server decides latest by SemVer compare, so a
+          # backport tag (e.g. v1.0.6 while v2.x is current) won't demote v2.x.
+          # Prereleases force 'false' so dev builds never become latest.
+          make_latest:           ${{ steps.ver.outputs.make_latest }}
           files: |
             ${{ steps.ver.outputs.zip }}
             sbom-dotnet.spdx.json
