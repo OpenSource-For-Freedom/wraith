@@ -69,8 +69,8 @@
                   Style="{StaticResource WarningButton}"
                   Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolVis}}"
                   Command="{Binding RestartToUpdateCommand}"
-                  Content="⚠  UPDATE READY — RESTART TO APPLY"
-                  ToolTip="An update has been downloaded. Click to confirm restart and apply."/>
+                  Content="{Binding UpdateActionText}"
+                  ToolTip="An update is available. Click for details."/>
 
           <!-- Window controls -->
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,4,0">

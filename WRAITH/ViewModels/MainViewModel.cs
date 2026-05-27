@@ -363,6 +363,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set { _updateVersionText = value; OnPropertyChanged(); }
     }
 
+    /// <summary>Title-bar button text — varies by build kind so the click action isn't a surprise.</summary>
+    public string UpdateActionText =>
+        UpdateService.IsInstalled
+            ? "⚠  UPDATE READY — RESTART TO APPLY"
+            : "⚠  UPDATE AVAILABLE — OPEN RELEASES PAGE";
+
     // ── Commands ───────────────────────────────────────────────────────
     public ICommand StartScanCommand   { get; }
     public ICommand StopScanCommand    { get; }
@@ -435,17 +441,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         LoadSlackPolicy();
 
-        RestartToUpdateCommand = new RelayCommand(_ =>
-        {
-            var win = new UpdateAvailableWindow(
-                _updateCurrentVersion,
-                UpdateVersionText,
-                _updateChangelog,
-                canApply: UpdateService.IsInstalled);
-            win.Owner = Application.Current.MainWindow;
-            if (win.ShowDialog() == true)
-                UpdateService.ApplyAndRestart();
-        });
+        RestartToUpdateCommand = new RelayCommand(_ => ShowUpdateDialog(UpdateService.IsInstalled));
 
         UpdateService.UpdateDownloaded += (currentVer, newVer, changelog, isInstalled) =>
         {
@@ -453,12 +449,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             _updateChangelog      = changelog;
             UpdateAvailable       = true;
             UpdateVersionText     = $"v{newVer}";
+            OnPropertyChanged(nameof(UpdateActionText));
 
-            // Auto-show the update window as soon as download completes
-            var win = new UpdateAvailableWindow(currentVer, $"v{newVer}", changelog, isInstalled);
-            win.Owner = Application.Current.MainWindow;
-            if (win.ShowDialog() == true)
-                UpdateService.ApplyAndRestart();
+            // Auto-open on first download. ShowUpdateDialog guards against the
+            // race where the user clicks the title-bar button while this is
+            // already on screen — both entry points share the same gate.
+            ShowUpdateDialog(isInstalled);
         };
 
         // Drain pending findings/logs on the UI thread every 150 ms
@@ -466,6 +462,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             { Interval = TimeSpan.FromMilliseconds(150) };
         _flushTimer.Tick += (_, _) => FlushPendingBatch();
         _flushTimer.Start();
+    }
+
+    // ── Update dialog (single-instance) ──────────────────────────────
+    private bool _updateDialogOpen;
+
+    private void ShowUpdateDialog(bool isInstalled)
+    {
+        if (_updateDialogOpen) return;
+        _updateDialogOpen = true;
+        try
+        {
+            var win = new UpdateAvailableWindow(
+                _updateCurrentVersion,
+                UpdateVersionText,
+                _updateChangelog,
+                canApply: isInstalled);
+            win.Owner = Application.Current.MainWindow;
+            if (win.ShowDialog() == true)
+                UpdateService.ApplyAndRestart();
+        }
+        finally
+        {
+            _updateDialogOpen = false;
+        }
     }
 
     // ── First-run dependency bootstrap ───────────────────────────────
