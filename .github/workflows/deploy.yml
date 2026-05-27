@@ -66,12 +66,12 @@ jobs:
           $major = [int]$parts[0]
           $minor = [int]$parts[1]
           $seedPatch = if ($parts.Count -eq 3) { [int]$parts[2] } else { 0 }
-          $mm = "$major.$minor"
 
           git fetch --tags --quiet
-          $tags = git tag -l "v${mm}.*" 2>$null
+
+          # Bump patch within the current major.minor series.
           $maxPatch = -1
-          foreach ($t in $tags) {
+          foreach ($t in (git tag -l "v${major}.${minor}.*" 2>$null)) {
             if ($t -match "^v(\d+)\.(\d+)\.(\d+)$" -and [int]$Matches[1] -eq $major -and [int]$Matches[2] -eq $minor) {
               $p = [int]$Matches[3]
               if ($p -gt $maxPatch) { $maxPatch = $p }
@@ -79,14 +79,38 @@ jobs:
           }
 
           # Always emit 3-part semver. If VERSION includes a patch seed, respect it as a minimum.
-          $patch = [Math]::Max($seedPatch, $maxPatch + 1)
-          $v = "v$major.$minor.$patch"
+          $patch    = [Math]::Max($seedPatch, $maxPatch + 1)
+          $nextVer  = [version]"$major.$minor.$patch"
 
-          # Tag this commit and push so the release has a proper ref
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name  "github-actions[bot]"
-          git tag $v
-          git push origin $v
+          # Stale-VERSION guard.
+          # A common foot-gun: someone merges to main without bumping VERSION,
+          # the derive step produces v1.0.X while v2.x.y already exists, and
+          # the release gets published as "latest" — every user gets a
+          # downgrade prompt. Refuse to publish if the derived version isn't
+          # strictly greater than the highest existing tag.
+          $maxTag = $null
+          foreach ($t in (git tag -l "v*" 2>$null)) {
+            if ($t -match '^v(\d+\.\d+\.\d+)$') {
+              $tv = [version]$Matches[1]
+              if ($null -eq $maxTag -or $tv -gt $maxTag) { $maxTag = $tv }
+            }
+          }
+          if ($null -ne $maxTag -and $nextVer -le $maxTag) {
+            $suggested = "$($maxTag.Major).$($maxTag.Minor + 1)"
+            throw @"
+VERSION file is stale.
+  Would publish:        v$nextVer
+  Highest existing tag: v$maxTag
+
+Bump VERSION to '$suggested' (or higher) and push again. Refusing to
+publish would downgrade every user via the auto-update prompt.
+"@
+          }
+
+          $v = "v$nextVer"
+
+          # NOTE: the tag is deliberately NOT created here. softprops/action-gh-release
+          # creates the tag at release time, so a build failure leaves no orphan tag.
 
           Write-Output "version=$v"                  >> $env:GITHUB_OUTPUT
           Write-Output "zip=WRAITH-${v}-win-x64.zip" >> $env:GITHUB_OUTPUT
