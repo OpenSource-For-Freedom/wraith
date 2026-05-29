@@ -118,13 +118,19 @@ jobs:
             }
             if ($null -ne $maxTag -and $nextStable -le $maxTag) {
               $suggested = "$($maxTag.Major).$($maxTag.Minor + 1)"
-              throw @"
-VERSION file is stale.
-  Would build prerelease for:   v$nextStable
-  Highest existing stable tag:  v$maxTag
-
-Bump VERSION to '$suggested' (or higher) and push again.
-"@
+              # NOTE: a PowerShell here-string (@"..."@) cannot be used here.
+              # Its body must sit at column 0 to terminate cleanly, but that
+              # dedents past the YAML `run: |` block scalar indent and breaks
+              # the workflow with "Invalid workflow file ... line N". Build
+              # the message as an array + -join instead.
+              $msg = @(
+                "VERSION file is stale."
+                "  Would build prerelease for:   v$nextStable"
+                "  Highest existing stable tag:  v$maxTag"
+                ""
+                "Bump VERSION to '$suggested' (or higher) and push again."
+              ) -join [Environment]::NewLine
+              throw $msg
             }
 
             # Prereleases carry the run number so multiple main pushes for
