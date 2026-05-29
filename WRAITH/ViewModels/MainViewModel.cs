@@ -43,6 +43,10 @@ public class AsyncRelayCommand : ICommand
     {
         _running = true; CommandManager.InvalidateRequerySuggested();
         try { await _execute(); }
+        // Without this catch, any exception escapes async void → reaches
+        // App.DispatcherUnhandledException → process exit. One broken command
+        // shouldn't take down the whole app.
+        catch (Exception ex) { Debug.WriteLine($"[AsyncRelayCommand] {ex}"); }
         finally { _running = false; CommandManager.InvalidateRequerySuggested(); }
     }
     public event EventHandler? CanExecuteChanged
@@ -65,6 +69,7 @@ public class AsyncRelayCommand<T> : ICommand
     {
         _running = true; CommandManager.InvalidateRequerySuggested();
         try { await _execute(p is T t ? t : default); }
+        catch (Exception ex) { Debug.WriteLine($"[AsyncRelayCommand<{typeof(T).Name}>] {ex}"); }
         finally { _running = false; CommandManager.InvalidateRequerySuggested(); }
     }
     public event EventHandler? CanExecuteChanged
@@ -1024,54 +1029,64 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
                 if (finding == null) return;
 
-                var processHint = ExtractProcessHint(finding);
-                var portHint = ExtractPortHint(finding);
-                var keyword = !string.IsNullOrWhiteSpace(processHint)
-                        ? processHint
-                        : ExtractExecutablePath(finding.CommandLine) ?? finding.Path;
-
-                if (string.IsNullOrWhiteSpace(keyword))
-                {
-                        AppendLog("[TRACE] No usable keyword/path found on selected finding.");
-                        return;
-                }
-
-                AppendLog("[TRACE] ---------------------------------------------------");
-                AppendLog($"[TRACE] Finding: {finding.Title}");
-                AppendLog($"[TRACE] Keyword: {keyword}");
-                if (portHint.HasValue) AppendLog($"[TRACE] Port hint: {portHint.Value}");
-
-                var rawOutput = await RunCommandCaptureAsync("powershell", BuildTracePowerShellArgs(keyword, portHint));
-                var jsonText = ExtractJsonObject(rawOutput);
-
-                if (string.IsNullOrWhiteSpace(jsonText))
-                {
-                        AppendLog("[TRACE] Could not parse trace output. Raw output excerpt:");
-                        foreach (var line in SanitizePowerShellOutput(rawOutput)
-                                                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                                                 .Take(10))
-                        {
-                                AppendLog($"[TRACE]   {line}");
-                        }
-                        return;
-                }
-
+                // Single outer catch so a powershell-not-on-PATH, missing cmdlet, or
+                // any other failure in this code path surfaces to the scan log
+                // instead of escaping as an unhandled async exception.
                 try
                 {
-                        using var doc = JsonDocument.Parse(jsonText);
-                        var root = doc.RootElement;
+                        var processHint = ExtractProcessHint(finding);
+                        var portHint = ExtractPortHint(finding);
+                        var keyword = !string.IsNullOrWhiteSpace(processHint)
+                                ? processHint
+                                : ExtractExecutablePath(finding.CommandLine) ?? finding.Path;
 
-                        LogTraceSection(root, "services", "Services");
-                        LogTraceSection(root, "tasks", "Scheduled Tasks");
-                        LogTraceSection(root, "runKeys", "Run Keys");
-                        LogTraceSection(root, "startup", "Startup Folder");
-                        LogTraceSection(root, "listeners", "Port Listeners");
-                        LogTraceSection(root, "listenerServices", "Services On Listener PID");
-                        LogTraceSection(root, "processes", "Processes");
+                        if (string.IsNullOrWhiteSpace(keyword))
+                        {
+                                AppendLog("[TRACE] No usable keyword/path found on selected finding.");
+                                return;
+                        }
+
+                        AppendLog("[TRACE] ---------------------------------------------------");
+                        AppendLog($"[TRACE] Finding: {finding.Title}");
+                        AppendLog($"[TRACE] Keyword: {keyword}");
+                        if (portHint.HasValue) AppendLog($"[TRACE] Port hint: {portHint.Value}");
+
+                        var rawOutput = await RunCommandCaptureAsync("powershell", BuildTracePowerShellArgs(keyword, portHint));
+                        var jsonText = ExtractJsonObject(rawOutput);
+
+                        if (string.IsNullOrWhiteSpace(jsonText))
+                        {
+                                AppendLog("[TRACE] Could not parse trace output. Raw output excerpt:");
+                                foreach (var line in SanitizePowerShellOutput(rawOutput)
+                                                         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                                         .Take(10))
+                                {
+                                        AppendLog($"[TRACE]   {line}");
+                                }
+                                return;
+                        }
+
+                        try
+                        {
+                                using var doc = JsonDocument.Parse(jsonText);
+                                var root = doc.RootElement;
+
+                                LogTraceSection(root, "services", "Services");
+                                LogTraceSection(root, "tasks", "Scheduled Tasks");
+                                LogTraceSection(root, "runKeys", "Run Keys");
+                                LogTraceSection(root, "startup", "Startup Folder");
+                                LogTraceSection(root, "listeners", "Port Listeners");
+                                LogTraceSection(root, "listenerServices", "Services On Listener PID");
+                                LogTraceSection(root, "processes", "Processes");
+                        }
+                        catch (Exception ex)
+                        {
+                                AppendLog($"[TRACE] Failed to decode trace JSON: {ex.Message}");
+                        }
                 }
                 catch (Exception ex)
                 {
-                        AppendLog($"[TRACE] Failed to decode trace JSON: {ex.Message}");
+                        AppendLog($"[TRACE] Trace failed: {ex.GetType().Name}: {ex.Message}");
                 }
         }
 
@@ -1285,16 +1300,25 @@ $result | ConvertTo-Json -Depth 8 -Compress
             StandardErrorEncoding = Encoding.UTF8
         };
 
-        using var proc = Process.Start(psi);
+        // Process.Start throws Win32Exception when the exe isn't on PATH
+        // (powershell removed on Win11 SE, etc.). Surface as empty output
+        // + stderr-shaped message so callers see the failure without the
+        // exception propagating up async void.
+        Process? proc;
+        try { proc = Process.Start(psi); }
+        catch (Exception ex) { return $"\n[run-command] failed to start '{exe}': {ex.Message}"; }
         if (proc == null) return string.Empty;
 
-        var stdout = await proc.StandardOutput.ReadToEndAsync();
-        var stderr = await proc.StandardError.ReadToEndAsync();
-        await proc.WaitForExitAsync();
+        using (proc)
+        {
+            var stdout = await proc.StandardOutput.ReadToEndAsync();
+            var stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
 
-        return string.IsNullOrWhiteSpace(stderr)
-            ? stdout
-            : $"{stdout}\n{stderr}";
+            return string.IsNullOrWhiteSpace(stderr)
+                ? stdout
+                : $"{stdout}\n{stderr}";
+        }
     }
 
     private void Clear()
