@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -290,6 +291,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => _osDescription;
         set { _osDescription = value; OnPropertyChanged(); }
     }
+
+    /// <summary>Shown in the title bar so an applied update is verifiable by sight.</summary>
+    public string AppVersion =>
+        "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0");
 
     public double ScanProgress
     {

@@ -58,10 +58,14 @@
                       HorizontalAlignment="Left" Margin="8,0">
             <Image Source="Assets/wraith.png" Width="18" Height="18"
                    VerticalAlignment="Center" Margin="0,0,6,0" RenderOptions.BitmapScalingMode="HighQuality"/>
-            <TextBlock Text="WRAITH  ·  Windows Runtime Analysis &amp; Intrusion Threat Hunter"
-                       VerticalAlignment="Center"
+            <TextBlock VerticalAlignment="Center"
                        FontSize="11" FontWeight="SemiBold"
-                       Foreground="{StaticResource BrGoldDim}"/>
+                       Foreground="{StaticResource BrGoldDim}">
+              <Run Text="WRAITH"/>
+              <Run Text=" "/>
+              <Run Text="{Binding AppVersion, Mode=OneTime}"/>
+              <Run Text="  ·  Windows Runtime Analysis &amp; Intrusion Threat Hunter"/>
+            </TextBlock>
           </StackPanel>
           <!-- Update-ready notification (hidden until an update is downloaded) -->
           <Button HorizontalAlignment="Center" VerticalAlignment="Center"
