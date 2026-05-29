@@ -2,6 +2,8 @@ using System.Windows;
 using System.Reflection;
 using System.Threading;
 using System.IO;
+using System.Net.Http;
+using System.Net.Sockets;
 using Velopack;
 using Velopack.Sources;
 
@@ -34,6 +36,11 @@ public static class UpdateService
 
     private static UpdateManager? _mgr;
     private static UpdateInfo?    _pendingUpdate;
+    /// <summary>
+    /// Version we've already fired <see cref="UpdateDownloaded"/> for in this session.
+    /// Prevents duplicate auto-popups when the check runs more than once per launch.
+    /// </summary>
+    private static string? _lastNotifiedVersion;
 
     private static void Trace(string msg)
     {
@@ -58,10 +65,24 @@ public static class UpdateService
             var installed = _mgr.IsInstalled;
             Trace($"CheckForUpdatesAsync: IsInstalled={installed}");
 
-            _pendingUpdate = await _mgr.CheckForUpdatesAsync();
+            _pendingUpdate = await WithRetryAsync(
+                () => _mgr.CheckForUpdatesAsync(),
+                "CheckForUpdatesAsync");
+
             if (_pendingUpdate == null)
             {
                 Trace("CheckForUpdatesAsync: no update");
+                return;
+            }
+
+            var newVersion = _pendingUpdate.TargetFullRelease.Version.ToString();
+
+            // Skip if we already surfaced this version earlier in the session — the
+            // title-bar "UPDATE READY" button stays visible from the first prompt,
+            // so the user already has a path back into the dialog if they dismissed it.
+            if (string.Equals(_lastNotifiedVersion, newVersion, StringComparison.Ordinal))
+            {
+                Trace($"CheckForUpdatesAsync: version {newVersion} already notified, skipping");
                 return;
             }
 
@@ -70,7 +91,9 @@ public static class UpdateService
             // the nupkg would waste 50+ MB for an apply that can never run.
             if (installed)
             {
-                await _mgr.DownloadUpdatesAsync(_pendingUpdate);
+                await WithRetryAsync(
+                    () => _mgr.DownloadUpdatesAsync(_pendingUpdate),
+                    "DownloadUpdatesAsync");
                 Trace("CheckForUpdatesAsync: payload downloaded");
             }
             else
@@ -78,12 +101,12 @@ public static class UpdateService
                 Trace("CheckForUpdatesAsync: portable build — skipping download, prompting for manual update");
             }
 
-            var newVersion     = _pendingUpdate.TargetFullRelease.Version.ToString();
             var changelog      = _pendingUpdate.TargetFullRelease.NotesMarkdown ?? string.Empty;
             var currentVersion = Assembly.GetExecutingAssembly()
                                          .GetName().Version?.ToString(3) ?? "unknown";
 
             Trace($"CheckForUpdatesAsync: update ready current={currentVersion} new={newVersion} installed={installed}");
+            _lastNotifiedVersion = newVersion;
 
             Application.Current.Dispatcher.Invoke(() =>
                 UpdateDownloaded?.Invoke(currentVersion, newVersion, changelog, installed));
@@ -105,4 +128,33 @@ public static class UpdateService
         if (_mgr == null || _pendingUpdate == null) return;
         _mgr.ApplyUpdatesAndRestart(_pendingUpdate);
     }
+
+    // ── Transient-failure retry ──────────────────────────────────────────────
+    // Three tries, 2s/4s backoff. We only retry network-shaped failures —
+    // anything else (auth, parse error, disk full) is not going to fix itself.
+    private static async Task<T> WithRetryAsync<T>(Func<Task<T>> op, string label)
+    {
+        var delaysMs = new[] { 2000, 4000 };
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return await op();
+            }
+            catch (Exception ex) when (attempt < delaysMs.Length && IsTransient(ex))
+            {
+                Trace($"{label}: transient {ex.GetType().Name} on attempt {attempt + 1}, retrying in {delaysMs[attempt]}ms");
+                await Task.Delay(delaysMs[attempt]);
+            }
+        }
+    }
+
+    private static async Task WithRetryAsync(Func<Task> op, string label) =>
+        await WithRetryAsync<object?>(async () => { await op(); return null; }, label);
+
+    private static bool IsTransient(Exception ex) =>
+        ex is HttpRequestException
+           or SocketException
+           or TaskCanceledException
+           or IOException;
 }
