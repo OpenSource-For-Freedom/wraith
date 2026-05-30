@@ -632,7 +632,16 @@ public sealed class BootstrapService
             try
             {
                 var fileName = System.IO.Path.GetFileName(new Uri(url).AbsolutePath);
-                var installerPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+                var tempRoot = System.IO.Path.GetFullPath(System.IO.Path.GetTempPath());
+                var installerPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(tempRoot, fileName));
+                var tempPrefix = tempRoot.EndsWith(System.IO.Path.DirectorySeparatorChar)
+                    ? tempRoot
+                    : tempRoot + System.IO.Path.DirectorySeparatorChar;
+                if (!installerPath.StartsWith(tempPrefix, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(installerPath, tempRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Resolved installer path is outside the temp directory.");
+                }
                 Log($"Downloading Python installer: {url}");
 
                 using (var resp = await http.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct))
