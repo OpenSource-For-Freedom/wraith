@@ -485,9 +485,12 @@ public sealed class BootstrapService
         var (wingetIds, _) = GetPreferredPythonTargets();
         _ = await RunAsync(wingetExe, ["source", "update"], null, ct);
         bool didResetSources = false;
+        bool anyInstallSucceeded = false;
 
         foreach (var id in wingetIds)
         {
+            if (anyInstallSucceeded) break;
+
             foreach (var scope in new[] { "user", "machine" })
             {
                 Log($"Installing {id} via winget (scope={scope})...");
@@ -507,6 +510,15 @@ public sealed class BootstrapService
                     await Task.Delay(2500, ct); // let installer finalise file handles
                     var found = await FindPythonAsync(ct);
                     if (found != null) return found;
+
+                    // STOP HERE: the install succeeded — Python IS on disk somewhere.
+                    // Trying the next id/scope would just fire another UAC prompt and
+                    // installer for a Python we don't need. Bail out so the user
+                    // doesn't see an endless install loop.
+                    anyInstallSucceeded = true;
+                    Log("Install succeeded but Python could not be located from this process. " +
+                        "Aborting further winget attempts — restart WRAITH to pick it up.");
+                    break;
                 }
 
                 var err = (stderr ?? "").Trim();
@@ -525,6 +537,13 @@ public sealed class BootstrapService
                     continue;
                 }
             }
+        }
+
+        if (anyInstallSucceeded)
+        {
+            // Don't chain into the official-installer fallback — that would install
+            // ANOTHER Python in a different location on top of the one winget just put down.
+            return null;
         }
 
         Log("winget install did not succeed. Falling back to official python.org installer...");
@@ -613,7 +632,16 @@ public sealed class BootstrapService
             try
             {
                 var fileName = System.IO.Path.GetFileName(new Uri(url).AbsolutePath);
-                var installerPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+                var tempRoot = System.IO.Path.GetFullPath(System.IO.Path.GetTempPath());
+                var installerPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(tempRoot, fileName));
+                var tempPrefix = tempRoot.EndsWith(System.IO.Path.DirectorySeparatorChar)
+                    ? tempRoot
+                    : tempRoot + System.IO.Path.DirectorySeparatorChar;
+                if (!installerPath.StartsWith(tempPrefix, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(installerPath, tempRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Resolved installer path is outside the temp directory.");
+                }
                 Log($"Downloading Python installer: {url}");
 
                 using (var resp = await http.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, ct))
@@ -642,12 +670,18 @@ public sealed class BootstrapService
                         try { System.IO.File.Delete(installerPath); } catch { }
                         return found;
                     }
-                    Log("Installer completed, but Python was not detected yet.");
+
+                    // STOP HERE for the same reason as the winget path: install succeeded,
+                    // we just can't find Python from this process. Don't download and run
+                    // ANOTHER installer — that's exactly what the user reported as
+                    // "looped around install to path".
+                    Log("Installer completed but Python was not detected — restart WRAITH to pick it up.");
+                    try { System.IO.File.Delete(installerPath); } catch { }
+                    return null;
                 }
-                else
-                {
-                    Log($"Official installer exit code {code}: {(stderr ?? string.Empty).Trim()}");
-                }
+
+                Log($"Official installer exit code {code}: {(stderr ?? string.Empty).Trim()}");
+                try { System.IO.File.Delete(installerPath); } catch { }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
