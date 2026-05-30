@@ -221,7 +221,7 @@ public partial class QuarantineWindow : Window
         {
             try
             {
-                if (!System.IO.File.Exists(path))
+                if (!System.IO.File.Exists(path) && !System.IO.Directory.Exists(path))
                 {
                     failed++;
                     continue;
