@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
@@ -19,6 +20,8 @@ public sealed class QuarantineRecord
     public bool Restored { get; set; }
     /// <summary>True when the original file was locked and is scheduled for deletion at next boot.</summary>
     public bool PendingRebootDelete { get; set; }
+    /// <summary>True when the source was a directory; the vault entry is a zip archive.</summary>
+    public bool IsDirectory { get; set; }
     public string Severity { get; set; } = "Info";  // Critical, High, Medium, Low, Info
 
     /// <summary>Computed lifecycle state for the UI — never serialised.</summary>
@@ -71,44 +74,58 @@ public sealed class QuarantineService
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("file path is required", nameof(filePath));
         var sourcePath = NormalizeFullPath(filePath);
-        if (!File.Exists(sourcePath))
+
+        var isDirectory = Directory.Exists(sourcePath);
+        if (!isDirectory && !File.Exists(sourcePath))
             throw new FileNotFoundException("File not found", sourcePath);
 
         lock (_sync)
         {
             var id = Guid.NewGuid().ToString("N");
-            var fileName = Path.GetFileName(sourcePath);
-            var safeName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{id}_{fileName}";
+            var leafName = Path.GetFileName(sourcePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            // Directory entries land as zip archives in the vault. The .zip suffix
+            // lets the user (and any later tooling) tell at a glance that this
+            // record is a packaged directory, not a single file.
+            var safeName = isDirectory
+                ? $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{id}_{leafName}.zip"
+                : $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{id}_{leafName}";
             var dest = NormalizeFullPath(Path.Combine(_vaultDir, safeName));
 
             if (!IsUnderRoot(dest, _vaultDir))
                 throw new InvalidOperationException("Resolved quarantine destination is outside the vault directory.");
 
             bool pendingReboot = false;
-            try
+            if (isDirectory)
             {
-                File.Move(sourcePath, dest);
+                QuarantineDirectory(sourcePath, dest);
             }
-            catch (IOException)
+            else
             {
-                // Source is locked (mapped into a running process, AV scanner open handle, etc.).
-                // Copy the bytes into the vault so we can still hash/contain them, then schedule
-                // the original for deletion at next reboot. Without this fallback the most
-                // important case (active malware) just fails outright.
-                CopyWithSharedAccess(sourcePath, dest);
-
-                if (!TryDeleteFile(sourcePath))
+                try
                 {
-                    if (!MoveFileEx(sourcePath, null, MOVEFILE_DELAY_UNTIL_REBOOT))
+                    File.Move(sourcePath, dest);
+                }
+                catch (IOException)
+                {
+                    // Source is locked (mapped into a running process, AV scanner open handle, etc.).
+                    // Copy the bytes into the vault so we can still hash/contain them, then schedule
+                    // the original for deletion at next reboot. Without this fallback the most
+                    // important case (active malware) just fails outright.
+                    CopyWithSharedAccess(sourcePath, dest);
+
+                    if (!TryDeleteFile(sourcePath))
                     {
-                        var err = Marshal.GetLastWin32Error();
-                        // Vault copy succeeded but we couldn't even schedule the delete.
-                        // Roll back the vault copy so we don't leak duplicates.
-                        TryDeleteFile(dest);
-                        throw new IOException(
-                            $"File is locked and could not be scheduled for reboot deletion (Win32 error {err}).");
+                        if (!MoveFileEx(sourcePath, null, MOVEFILE_DELAY_UNTIL_REBOOT))
+                        {
+                            var err = Marshal.GetLastWin32Error();
+                            // Vault copy succeeded but we couldn't even schedule the delete.
+                            // Roll back the vault copy so we don't leak duplicates.
+                            TryDeleteFile(dest);
+                            throw new IOException(
+                                $"File is locked and could not be scheduled for reboot deletion (Win32 error {err}).");
+                        }
+                        pendingReboot = true;
                     }
-                    pendingReboot = true;
                 }
             }
 
@@ -123,6 +140,7 @@ public sealed class QuarantineService
                 Deleted = false,
                 Restored = false,
                 PendingRebootDelete = pendingReboot,
+                IsDirectory = isDirectory,
                 Severity = severity,
             };
 
@@ -130,6 +148,56 @@ public sealed class QuarantineService
             index.Add(rec);
             SaveIndex(index);
             return rec;
+        }
+    }
+
+    /// <summary>
+    /// Zips a directory into the vault, then removes the original. Handles Chrome
+    /// extensions and other directory-shaped findings. Falls back to renaming the
+    /// source out of place when recursive delete fails (e.g. Chrome holding files
+    /// open) — that's enough to neutralise the extension on Chrome's next scan.
+    /// </summary>
+    private static void QuarantineDirectory(string sourceDir, string destZip)
+    {
+        // Zip first. If this throws (permission, disk full, etc.) the source
+        // remains untouched.
+        ZipFile.CreateFromDirectory(sourceDir, destZip,
+            CompressionLevel.Optimal, includeBaseDirectory: true);
+
+        try
+        {
+            Directory.Delete(sourceDir, recursive: true);
+            return;
+        }
+        catch (IOException) { /* fall through to rename neutralisation */ }
+        catch (UnauthorizedAccessException) { /* fall through */ }
+
+        // Couldn't delete (Chrome/other process has files open). Rename the
+        // root out of place so the application no longer finds the extension.
+        // Open file handles inside the directory continue to work via the OS's
+        // existing references, but no new opens via the original path succeed.
+        var parked = sourceDir + ".wraith-quarantined-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        try
+        {
+            Directory.Move(sourceDir, parked);
+            // Schedule the parked tree for delete-on-reboot, file by file.
+            // Best-effort: if any file can't be scheduled, leave it — the
+            // rename alone has already broken the extension's discovery path.
+            foreach (var f in Directory.EnumerateFiles(parked, "*", SearchOption.AllDirectories))
+            {
+                if (!TryDeleteFile(f))
+                    MoveFileEx(f, null, MOVEFILE_DELAY_UNTIL_REBOOT);
+            }
+        }
+        catch
+        {
+            // Rename failed too — the vault still has the zip, but the
+            // original directory is intact and the extension may still load.
+            // Surface a clear error so the caller knows containment is partial.
+            TryDeleteFile(destZip);
+            throw new IOException(
+                $"Directory '{sourceDir}' is in use and could not be moved or renamed. " +
+                "Close the process holding it (e.g. quit Chrome) and try again.");
         }
     }
 
@@ -160,18 +228,52 @@ public sealed class QuarantineService
             if (string.IsNullOrWhiteSpace(targetDir)) return false;
             Directory.CreateDirectory(targetDir);
 
-            var target = originalPath;
-            if (File.Exists(target))
+            if (rec.IsDirectory)
             {
-                var baseName = Path.GetFileNameWithoutExtension(target);
-                var ext = Path.GetExtension(target);
-                target = Path.Combine(targetDir, $"{baseName}_restored_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
+                // Vault entry is a zip — extract back to OriginalPath (or a sibling
+                // if the original location now exists). The zip was created with
+                // includeBaseDirectory=true so ExtractToDirectory(targetDir,...)
+                // recreates the leaf folder name automatically.
+                var target = originalPath;
+                if (Directory.Exists(target) || File.Exists(target))
+                {
+                    target = Path.Combine(targetDir,
+                        Path.GetFileName(originalPath.TrimEnd(Path.DirectorySeparatorChar)) +
+                        $"_restored_{DateTime.Now:yyyyMMdd_HHmmss}");
+                }
+
+                // ExtractToDirectory recreates the included base folder inside targetDir,
+                // so we extract into the parent and let the zip place the leaf folder.
+                ZipFile.ExtractToDirectory(quarantinedPath, targetDir);
+
+                // The above places the leaf at originalPath. If we need the
+                // _restored_ suffix because originalPath already existed,
+                // rename the extracted leaf into place.
+                if (!string.Equals(target, originalPath, StringComparison.OrdinalIgnoreCase)
+                    && Directory.Exists(originalPath))
+                {
+                    Directory.Move(originalPath, target);
+                }
+
+                File.Delete(quarantinedPath);
+                restoredPath = target;
+            }
+            else
+            {
+                var target = originalPath;
+                if (File.Exists(target))
+                {
+                    var baseName = Path.GetFileNameWithoutExtension(target);
+                    var ext = Path.GetExtension(target);
+                    target = Path.Combine(targetDir, $"{baseName}_restored_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
+                }
+
+                target = NormalizeFullPath(target);
+
+                File.Move(quarantinedPath, target);
+                restoredPath = target;
             }
 
-            target = NormalizeFullPath(target);
-
-            File.Move(quarantinedPath, target);
-            restoredPath = target;
             rec.QuarantinedPath = string.Empty;
             rec.Restored = true;
             SaveIndex(index);

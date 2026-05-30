@@ -168,9 +168,13 @@ public sealed class AutomatedResponseService
                 continue;
             }
 
-            if (!File.Exists(containmentPath))
+            // Directory-shaped findings (Chrome extensions, etc.) come through as a
+            // folder path; QuarantineService handles those by zipping the tree.
+            // Registry-path findings (HKLM\..., HKCU\...) have neither File nor Directory
+            // and aren't containable through the vault — they need a different code path.
+            if (!File.Exists(containmentPath) && !Directory.Exists(containmentPath))
             {
-                report.Messages.Add($"Quarantine skipped (file missing): {containmentPath}");
+                report.Messages.Add($"Quarantine skipped (path not on disk): {containmentPath}");
                 continue;
             }
 
