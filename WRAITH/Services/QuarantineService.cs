@@ -5,6 +5,7 @@ using System.Security.Principal;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Win32;
 
 namespace WRAITH.Services;
 
@@ -22,6 +23,8 @@ public sealed class QuarantineRecord
     public bool PendingRebootDelete { get; set; }
     /// <summary>True when the source was a directory; the vault entry is a zip archive.</summary>
     public bool IsDirectory { get; set; }
+    /// <summary>True when the source was a registry value; the vault entry is a JSON export.</summary>
+    public bool IsRegistry { get; set; }
     public string Severity { get; set; } = "Info";  // Critical, High, Medium, Low, Info
 
     /// <summary>Computed lifecycle state for the UI — never serialised.</summary>
@@ -73,6 +76,13 @@ public sealed class QuarantineService
     {
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("file path is required", nameof(filePath));
+
+        // Registry-shaped paths (HKLM\…, HKCU\…, etc.) are not files. Detect
+        // before Path.GetFullPath would mangle them into a CWD-relative path
+        // and route to the registry quarantine path instead.
+        if (IsRegistryPath(filePath))
+            return QuarantineRegistryEntry(filePath, reason, severity);
+
         var sourcePath = NormalizeFullPath(filePath);
 
         var isDirectory = Directory.Exists(sourcePath);
@@ -141,6 +151,7 @@ public sealed class QuarantineService
                 Restored = false,
                 PendingRebootDelete = pendingReboot,
                 IsDirectory = isDirectory,
+                IsRegistry = false,
                 Severity = severity,
             };
 
@@ -201,6 +212,201 @@ public sealed class QuarantineService
         }
     }
 
+    // ── Registry quarantine ─────────────────────────────────────────────
+    private static readonly Dictionary<string, RegistryHive> _hives = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["HKLM"]                = RegistryHive.LocalMachine,
+        ["HKEY_LOCAL_MACHINE"]  = RegistryHive.LocalMachine,
+        ["HKCU"]                = RegistryHive.CurrentUser,
+        ["HKEY_CURRENT_USER"]   = RegistryHive.CurrentUser,
+        ["HKCR"]                = RegistryHive.ClassesRoot,
+        ["HKEY_CLASSES_ROOT"]   = RegistryHive.ClassesRoot,
+        ["HKU"]                 = RegistryHive.Users,
+        ["HKEY_USERS"]          = RegistryHive.Users,
+    };
+
+    public static bool IsRegistryPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var first = path!.Split('\\', '/')[0];
+        return _hives.ContainsKey(first);
+    }
+
+    private QuarantineRecord QuarantineRegistryEntry(string registryPath, string reason, string severity)
+    {
+        var parts = registryPath.Replace('/', '\\').Split('\\', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            throw new ArgumentException($"Invalid registry path: {registryPath}", nameof(registryPath));
+
+        if (!_hives.TryGetValue(parts[0], out var hive))
+            throw new ArgumentException($"Unknown registry hive: {parts[0]}", nameof(registryPath));
+
+        using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
+
+        // Try the path as <key>\<value-name> first: open parent, look for a matching value.
+        // browser_scanner.py emits paths of this shape for run-keys, native-messaging hosts, etc.
+        var subkeyPath = string.Join("\\", parts.Skip(1).Take(parts.Length - 2));
+        var valueName  = parts[^1];
+
+        if (!string.IsNullOrEmpty(subkeyPath))
+        {
+            using var parentKey = baseKey.OpenSubKey(subkeyPath, writable: true);
+            if (parentKey != null &&
+                parentKey.GetValueNames().Any(n => string.Equals(n, valueName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return QuarantineRegistryValue(registryPath, parts[0], subkeyPath, valueName, parentKey, reason, severity);
+            }
+        }
+
+        // Not a value — the path resolves to a key (or doesn't exist at all).
+        // Key-level subtree quarantine is a much bigger feature (recursive export,
+        // ACL preservation, etc.) and isn't needed for the browser_scanner findings
+        // that actually emit registry paths today.
+        using var asKey = baseKey.OpenSubKey(string.Join("\\", parts.Skip(1)), writable: false);
+        if (asKey != null)
+        {
+            throw new NotSupportedException(
+                $"Registry KEY quarantine is not yet implemented. " +
+                $"'{registryPath}' resolves to a subkey, not a single value.");
+        }
+
+        throw new InvalidOperationException($"Registry path not found: {registryPath}");
+    }
+
+    private QuarantineRecord QuarantineRegistryValue(
+        string originalPath, string hiveName, string subkeyPath, string valueName,
+        RegistryKey parentKey, string reason, string severity)
+    {
+        lock (_sync)
+        {
+            var id = Guid.NewGuid().ToString("N");
+            var safeName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{id}_{SanitizeForFileName(valueName)}.reg.json";
+            var dest = NormalizeFullPath(Path.Combine(_vaultDir, safeName));
+
+            if (!IsUnderRoot(dest, _vaultDir))
+                throw new InvalidOperationException("Resolved quarantine destination is outside the vault directory.");
+
+            var kind = parentKey.GetValueKind(valueName);
+            // DoNotExpandEnvironmentNames preserves REG_EXPAND_SZ literally, which matters for
+            // run-key entries that legitimately use %SystemRoot% etc. The restore would otherwise
+            // write a fully expanded path that breaks on a different machine state.
+            var raw  = parentKey.GetValue(valueName, defaultValue: null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+
+            var export = new RegistryExport
+            {
+                Hive      = hiveName,
+                Subkey    = subkeyPath,
+                ValueName = valueName,
+                ValueKind = kind.ToString(),
+                ValueData = SerializeRegistryValue(raw),
+            };
+
+            File.WriteAllText(dest, JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true }));
+
+            // Remove the value from the live registry only AFTER the export is durable.
+            parentKey.DeleteValue(valueName, throwOnMissingValue: false);
+
+            var rec = new QuarantineRecord
+            {
+                Id                  = id,
+                OriginalPath        = originalPath,
+                QuarantinedPath     = dest,
+                Sha256              = ComputeSha256(dest),
+                QuarantinedAtUtc    = DateTime.UtcNow,
+                Reason              = reason,
+                Deleted             = false,
+                Restored            = false,
+                PendingRebootDelete = false,
+                IsDirectory         = false,
+                IsRegistry          = true,
+                Severity            = severity,
+            };
+
+            var index = LoadIndex();
+            index.Add(rec);
+            SaveIndex(index);
+            return rec;
+        }
+    }
+
+    private bool RestoreRegistryValue(QuarantineRecord rec, out string restoredPath)
+    {
+        restoredPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(rec.QuarantinedPath)) return false;
+        var exportPath = NormalizeFullPath(rec.QuarantinedPath);
+        if (!IsUnderRoot(exportPath, _vaultDir) || !File.Exists(exportPath)) return false;
+
+        RegistryExport? export;
+        try
+        {
+            export = JsonSerializer.Deserialize<RegistryExport>(File.ReadAllText(exportPath));
+        }
+        catch { return false; }
+        if (export == null) return false;
+
+        if (!_hives.TryGetValue(export.Hive, out var hive)) return false;
+        if (!Enum.TryParse<RegistryValueKind>(export.ValueKind, out var kind)) return false;
+
+        using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
+        using var key = baseKey.CreateSubKey(export.Subkey, writable: true);
+        if (key == null) return false;
+
+        var data = DeserializeRegistryValue(kind, export.ValueData);
+        if (data == null) return false;
+
+        key.SetValue(export.ValueName, data, kind);
+        File.Delete(exportPath);
+        restoredPath = rec.OriginalPath;
+        return true;
+    }
+
+    private sealed class RegistryExport
+    {
+        public string Hive      { get; set; } = string.Empty;
+        public string Subkey    { get; set; } = string.Empty;
+        public string ValueName { get; set; } = string.Empty;
+        public string ValueKind { get; set; } = string.Empty;
+        // Serialised payload: strings as-is, numbers as text, multi-string as
+        // \n-joined, binary as base64. Kind drives the inverse on restore.
+        public string ValueData { get; set; } = string.Empty;
+    }
+
+    private static string SerializeRegistryValue(object? value) =>
+        value switch
+        {
+            null         => string.Empty,
+            string s     => s,
+            string[] sa  => string.Join("\n", sa),
+            byte[] ba    => Convert.ToBase64String(ba),
+            int    or long or uint or ulong => value.ToString() ?? string.Empty,
+            _            => value.ToString() ?? string.Empty,
+        };
+
+    private static object? DeserializeRegistryValue(RegistryValueKind kind, string data) =>
+        kind switch
+        {
+            RegistryValueKind.String or RegistryValueKind.ExpandString => data,
+            RegistryValueKind.DWord       => int.TryParse(data, out var i) ? i : 0,
+            RegistryValueKind.QWord       => long.TryParse(data, out var l) ? l : 0L,
+            RegistryValueKind.MultiString => data.Split('\n'),
+            RegistryValueKind.Binary      => SafeFromBase64(data),
+            _ => data,
+        };
+
+    private static byte[] SafeFromBase64(string data)
+    {
+        try { return Convert.FromBase64String(data); }
+        catch { return Array.Empty<byte>(); }
+    }
+
+    private static string SanitizeForFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        var s = new string(chars);
+        return string.IsNullOrWhiteSpace(s) ? "value" : s;
+    }
+
     public bool Restore(string id, out string restoredPath)
     {
         restoredPath = string.Empty;
@@ -211,6 +417,21 @@ public sealed class QuarantineService
             var index = LoadIndex();
             var rec = index.FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             if (rec == null || rec.Deleted) return false;
+
+            // Registry-restore writes the value back to the live registry instead
+            // of moving a file; OriginalPath here is the registry path string,
+            // not a filesystem path, so the normalisation below would corrupt it.
+            if (rec.IsRegistry)
+            {
+                if (RestoreRegistryValue(rec, out restoredPath))
+                {
+                    rec.QuarantinedPath = string.Empty;
+                    rec.Restored = true;
+                    SaveIndex(index);
+                    return true;
+                }
+                return false;
+            }
 
             var quarantinedPath = string.IsNullOrWhiteSpace(rec.QuarantinedPath)
                 ? string.Empty
