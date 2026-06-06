@@ -2,14 +2,17 @@
 param(
     [string]$TaskName = "WRAITH Persistence Listener",
     [string]$ScanPath = "C:\",
-    [int]$PollSeconds = 120
+    [int]$PollSeconds = 120,
+    # Explicit absolute paths so the SYSTEM-context task can find them.
+    [string]$PythonPath = "python",
+    [string]$ScannerDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 $scriptPath = Join-Path $PSScriptRoot "Start-WraithPersistenceListener.ps1"
 if (-not (Test-Path $scriptPath)) { throw "Listener script not found: $scriptPath" }
 
-$arg = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -ScanPath `"$ScanPath`" -PollSeconds $PollSeconds"
+$arg = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" -ScanPath `"$ScanPath`" -PollSeconds $PollSeconds -PythonPath `"$PythonPath`" -ScannerDir `"$ScannerDir`""
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 12)

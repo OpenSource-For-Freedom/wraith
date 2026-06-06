@@ -201,12 +201,12 @@ public partial class MainWindow : Window
             var menu = new System.Windows.Forms.ContextMenuStrip();
 
             var openItem = new System.Windows.Forms.ToolStripMenuItem("Open WRAITH");
-            openItem.Click += (_, _) => Dispatcher.Invoke(() =>
+            HookGuarded(openItem, "Open WRAITH", () => Dispatcher.Invoke(() =>
             {
                 Show();
                 WindowState = WindowState.Normal;
                 Activate();
-            });
+            }));
 
             var autoScan = new System.Windows.Forms.ToolStripMenuItem("Auto Scan Schedule");
             AddScheduleItem(autoScan, "Every 1 hour", 60);
@@ -218,40 +218,40 @@ public partial class MainWindow : Window
             AddScheduleItem(autoScan, "Every 1 week", 10080);
 
             var disableSchedule = new System.Windows.Forms.ToolStripMenuItem("Disable auto scan");
-            disableSchedule.Click += async (_, _) =>
+            HookGuardedAsync(disableSchedule, "Disable auto scan", async () =>
             {
                 var (ok, output) = await _automation.DisableTimedScanAsync();
                 ShowTrayResult(ok, ok ? "Auto scan disabled" : output);
-            };
+            });
             autoScan.DropDownItems.Add(new System.Windows.Forms.ToolStripSeparator());
             autoScan.DropDownItems.Add(disableSchedule);
 
             var persistence = new System.Windows.Forms.ToolStripMenuItem("Persistence Scanning");
             var enablePersistence = new System.Windows.Forms.ToolStripMenuItem("Enable");
-            enablePersistence.Click += async (_, _) =>
+            HookGuardedAsync(enablePersistence, "Enable persistence", async () =>
             {
                 var scanPath = GetVmScanPath();
                 var (ok, output) = await _automation.EnablePersistenceListenerAsync(scanPath);
                 ShowTrayResult(ok, ok ? "Persistence scanning enabled" : output);
-            };
+            });
             var disablePersistence = new System.Windows.Forms.ToolStripMenuItem("Disable");
-            disablePersistence.Click += async (_, _) =>
+            HookGuardedAsync(disablePersistence, "Disable persistence", async () =>
             {
                 var (ok, output) = await _automation.DisablePersistenceListenerAsync();
                 ShowTrayResult(ok, ok ? "Persistence scanning disabled" : output);
-            };
+            });
             persistence.DropDownItems.Add(enablePersistence);
             persistence.DropDownItems.Add(disablePersistence);
 
             var quarantine = new System.Windows.Forms.ToolStripMenuItem("Quarantine Vault");
-            quarantine.Click += (_, _) => Dispatcher.Invoke(() =>
+            HookGuarded(quarantine, "Open Quarantine", () => Dispatcher.Invoke(() =>
             {
                 if (DataContext is MainViewModel vm)
                     vm.OpenQuarantineCommand.Execute(null);
-            });
+            }));
 
             var quitItem = new System.Windows.Forms.ToolStripMenuItem("Quit");
-            quitItem.Click += (_, _) => Dispatcher.Invoke(Close);
+            HookGuarded(quitItem, "Quit", () => Dispatcher.Invoke(Close));
 
             menu.Items.Add(openItem);
             menu.Items.Add(autoScan);
@@ -311,13 +311,46 @@ public partial class MainWindow : Window
     private void AddScheduleItem(System.Windows.Forms.ToolStripMenuItem parent, string label, int intervalMinutes)
     {
         var item = new System.Windows.Forms.ToolStripMenuItem(label);
-        item.Click += async (_, _) =>
+        HookGuardedAsync(item, $"Auto scan {label}", async () =>
         {
             var scanPath = GetVmScanPath();
             var (ok, output) = await _automation.SetTimedScanAsync(intervalMinutes, scanPath);
             ShowTrayResult(ok, ok ? $"Auto scan set: {label}" : output);
-        };
+        });
         parent.DropDownItems.Add(item);
+    }
+
+    // ── Tray click guards ────────────────────────────────────────────────
+    // Each click handler is async void (event-handler shape required by
+    // ToolStripMenuItem.Click). An exception that escapes the lambda would
+    // reach the synchronization context and tear the whole app down via
+    // App.DispatcherUnhandledException. Wrap every handler so a failure
+    // becomes a balloon-tip error, not a process exit.
+
+    private void HookGuarded(System.Windows.Forms.ToolStripMenuItem item, string label, Action work)
+    {
+        item.Click += (_, _) =>
+        {
+            try { work(); }
+            catch (Exception ex)
+            {
+                ShowTrayResult(false, $"{label} failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[tray] {label}: {ex}");
+            }
+        };
+    }
+
+    private void HookGuardedAsync(System.Windows.Forms.ToolStripMenuItem item, string label, Func<Task> work)
+    {
+        item.Click += async (_, _) =>
+        {
+            try { await work(); }
+            catch (Exception ex)
+            {
+                ShowTrayResult(false, $"{label} failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[tray] {label}: {ex}");
+            }
+        };
     }
 
     private string GetVmScanPath()
