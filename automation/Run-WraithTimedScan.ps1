@@ -2,12 +2,21 @@
 param(
     [string]$ScanPath = "C:\",
     [int]$Hours = 24,
-    [string]$Mode = "all"
+    [string]$Mode = "all",
+    # Explicit absolute paths injected by Register-WraithTimedScan.ps1.
+    # Falls back to PATH-relative `python` and a $PSScriptRoot-derived
+    # scanner dir for the manual-invocation case.
+    [string]$PythonPath = "python",
+    [string]$ScannerDir = ""
 )
 
 $ErrorActionPreference = "Continue"
-$root = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-$scannerDir = Join-Path $root "scanner"
+
+if ([string]::IsNullOrWhiteSpace($ScannerDir)) {
+    $root = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+    $ScannerDir = Join-Path $root "scanner"
+}
+
 $outDir = Join-Path $env:ProgramData "WRAITH\ScheduledScans"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
@@ -15,10 +24,12 @@ $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $outFile = Join-Path $outDir "scan_${Mode}_${stamp}.json"
 $logFile = Join-Path $outDir "scan_${Mode}_${stamp}.log"
 
-Push-Location $scannerDir
+Push-Location $ScannerDir
 try {
-    $cmd = "python scanner.py --mode $Mode --path \"$ScanPath\" --hours $Hours"
-    $raw = cmd /c $cmd 2>&1
+    # Invoke python directly by absolute path instead of via `cmd /c python ...`
+    # so we don't rely on PATH at all. Output gets captured into the same log
+    # so a missing python or missing scanner.py is visible after the fact.
+    $raw = & $PythonPath "scanner.py" "--mode" $Mode "--path" $ScanPath "--hours" $Hours 2>&1
     $raw | Out-File -FilePath $logFile -Encoding UTF8
 
     $jsonLine = $raw | Select-String -Pattern '^{"scanner":' | Select-Object -Last 1

@@ -43,4 +43,17 @@
     </Content>
   </ItemGroup>
 
+  <!-- Ship the Python scanner next to the exe so the Velopack publish (which
+       only takes what dotnet publish emits) finds scanner/scanner.py at
+       runtime. Without this, every scheduled task / persistence listener
+       registered from a Velopack install fails silently. The portable ZIP
+       still gets scanner/ via the workflow's separate Copy-Item — that step
+       becomes redundant but harmless. -->
+  <ItemGroup>
+    <Content Include="..\scanner\**\*" Exclude="..\scanner\**\__pycache__\**;..\scanner\**\*.pyc">
+      <Link>scanner\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

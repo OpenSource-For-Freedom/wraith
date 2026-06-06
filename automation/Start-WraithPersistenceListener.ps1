@@ -4,16 +4,26 @@ param(
     [int]$PollSeconds = 120,
     [int]$Hours = 24,
     [switch]$AutoKillCritical,
-    [string]$SlackWebhookUrl = ""
+    [string]$SlackWebhookUrl = "",
+    # Explicit absolute paths injected by Register-WraithPersistenceListener.ps1.
+    # Defaults preserve the manual-invocation case where this script is run
+    # directly from the automation folder.
+    [string]$PythonPath = "python",
+    [string]$ScannerDir = ""
 )
 
 $ErrorActionPreference = "Continue"
-$root = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-$scannerDir = Join-Path $root "scanner"
+
+if ([string]::IsNullOrWhiteSpace($ScannerDir)) {
+    $root = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+    $ScannerDir = Join-Path $root "scanner"
+}
+
 $outDir = Join-Path $env:ProgramData "WRAITH\PersistenceWatch"
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
 Write-Host "WRAITH persistence listener running. Poll=$PollSeconds sec Path=$ScanPath" -ForegroundColor Cyan
+Write-Host "Python=$PythonPath  Scanner=$ScannerDir" -ForegroundColor DarkGray
 
 function Send-SlackAlert {
     param(
@@ -35,9 +45,10 @@ while ($true) {
     $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $jsonOut = Join-Path $outDir "persistence_${stamp}.json"
 
-    Push-Location $scannerDir
+    Push-Location $ScannerDir
     try {
-        $raw = cmd /c "python scanner.py --mode persistence --path \"$ScanPath\" --hours $Hours" 2>&1
+        # Direct invocation by absolute python path, no PATH dependency.
+        $raw = & $PythonPath "scanner.py" "--mode" "persistence" "--path" $ScanPath "--hours" $Hours 2>&1
     }
     finally {
         Pop-Location
