@@ -15,8 +15,8 @@ import pytest
 
 import ioc_enricher
 
-
 # ── Sha256 extraction ──────────────────────────────────────────────────
+
 
 def test_sha256_of_file_returns_hex(tmp_path):
     p = tmp_path / "a.bin"
@@ -30,6 +30,7 @@ def test_sha256_of_missing_returns_none(tmp_path):
 
 
 # ── Indicator extraction ───────────────────────────────────────────────
+
 
 def test_extract_sha256_indicator_from_existing_file(tmp_path):
     p = tmp_path / "x.exe"
@@ -50,12 +51,17 @@ def test_extract_indicator_returns_none_for_pathless_finding():
 
 # ── MalwareBazaar query ─────────────────────────────────────────────────
 
+
 def test_query_malware_bazaar_handles_ok_response():
     fake_resp = MagicMock()
     fake_resp.status_code = 200
-    fake_resp.json.return_value = {"query_status": "ok", "data": [{"file_name": "evil.exe"}]}
-    with patch.object(ioc_enricher, "_load_api_key", return_value="fake-key"), \
-         patch.object(ioc_enricher, "requests") as m_req:
+    fake_resp.json.return_value = {
+        "query_status": "ok",
+        "data": [{"file_name": "evil.exe"}],
+    }
+    with patch.object(
+        ioc_enricher, "_load_api_key", return_value="fake-key"
+    ), patch.object(ioc_enricher, "requests") as m_req:
         m_req.post.return_value = fake_resp
         result = ioc_enricher.query_malware_bazaar("a" * 64)
     # On success the function returns data["data"][0] — the first match.
@@ -90,12 +96,17 @@ def test_query_malware_bazaar_handles_network_error():
 
 # ── ThreatFox query ────────────────────────────────────────────────────
 
+
 def test_query_threatfox_handles_ok_response():
     fake_resp = MagicMock()
     fake_resp.status_code = 200
-    fake_resp.json.return_value = {"query_status": "ok", "data": [{"threat_type_desc": "C2"}]}
-    with patch.object(ioc_enricher, "_load_api_key", return_value="fake-key"), \
-         patch.object(ioc_enricher, "requests") as m_req:
+    fake_resp.json.return_value = {
+        "query_status": "ok",
+        "data": [{"threat_type_desc": "C2"}],
+    }
+    with patch.object(
+        ioc_enricher, "_load_api_key", return_value="fake-key"
+    ), patch.object(ioc_enricher, "requests") as m_req:
         m_req.post.return_value = fake_resp
         result = ioc_enricher.query_threatfox("192.0.2.1")
     assert result is not None
@@ -111,6 +122,7 @@ def test_query_threatfox_handles_network_error():
 
 # ── enrich_findings end-to-end ──────────────────────────────────────────
 
+
 def test_enrich_findings_passes_through_empty_list():
     assert ioc_enricher.enrich_findings([]) == []
 
@@ -119,14 +131,16 @@ def test_enrich_findings_does_not_drop_findings(tmp_path):
     """No matter what the API says, findings must not disappear."""
     p = tmp_path / "x.exe"
     p.write_bytes(b"hello")
-    findings = [{
-        "path": str(p),
-        "title": "yara hit",
-        "category": "yara",
-        "subcategory": "yara_match",
-        "severity": "HIGH",
-        "reason": "rule X",
-    }]
+    findings = [
+        {
+            "path": str(p),
+            "title": "yara hit",
+            "category": "yara",
+            "subcategory": "yara_match",
+            "severity": "HIGH",
+            "reason": "rule X",
+        }
+    ]
     with patch.object(ioc_enricher, "requests") as m_req:
         m_req.post.side_effect = Exception("offline")
         out = ioc_enricher.enrich_findings(findings)

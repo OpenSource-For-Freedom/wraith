@@ -13,8 +13,8 @@ import pytest
 
 import cisa_kev_scanner
 
-
 # ── Helpers ────────────────────────────────────────────────────────────
+
 
 def test_extract_kbs_from_notes_finds_kb_ids():
     raw = "See KB5031356 for the patch; superseded by KB5032190."
@@ -47,6 +47,7 @@ def test_version_tuple_handles_invalid_gracefully():
 
 # ── Catalog loading ────────────────────────────────────────────────────
 
+
 def test_load_kev_catalog_with_cached_file(tmp_path):
     # Point the loader at a fake cache file in our test tmpdir.
     cache = tmp_path / "kev.json"
@@ -58,30 +59,44 @@ def test_load_kev_catalog_with_cached_file(tmp_path):
 
 # ── End-to-end scan ────────────────────────────────────────────────────
 
+
 def test_scan_returns_list_with_empty_catalog():
-    with patch.object(cisa_kev_scanner, "_load_kev_catalog", return_value=[]), \
-         patch.object(cisa_kev_scanner, "_get_installed_kbs", return_value=set()), \
-         patch.object(cisa_kev_scanner, "_get_windows_version", return_value={"build": 0}), \
-         patch.object(cisa_kev_scanner, "_get_installed_software", return_value=[]):
+    with patch.object(
+        cisa_kev_scanner, "_load_kev_catalog", return_value=[]
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_kbs", return_value=set()
+    ), patch.object(
+        cisa_kev_scanner, "_get_windows_version", return_value={"build": 0}
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_software", return_value=[]
+    ):
         findings = cisa_kev_scanner.scan_cisa_kev()
     assert isinstance(findings, list)
 
 
 def test_scan_emits_critical_for_missing_kb_in_kev():
     """A KEV-listed vuln whose patch KB isn't installed should fire."""
-    fake_catalog = [{
-        "cveID": "CVE-2024-99999",
-        "vendorProject": "Microsoft",
-        "product": "Windows",
-        "vulnerabilityName": "Critical RCE",
-        "notes": "Patched by KB5031356.",
-        "dueDate": "2024-12-01",
-    }]
-    with patch.object(cisa_kev_scanner, "_load_kev_catalog", return_value=fake_catalog), \
-         patch.object(cisa_kev_scanner, "_get_installed_kbs", return_value=set()), \
-         patch.object(cisa_kev_scanner, "_get_windows_version",
-                      return_value={"caption": "Windows 10", "build": 19045}), \
-         patch.object(cisa_kev_scanner, "_get_installed_software", return_value=[]):
+    fake_catalog = [
+        {
+            "cveID": "CVE-2024-99999",
+            "vendorProject": "Microsoft",
+            "product": "Windows",
+            "vulnerabilityName": "Critical RCE",
+            "notes": "Patched by KB5031356.",
+            "dueDate": "2024-12-01",
+        }
+    ]
+    with patch.object(
+        cisa_kev_scanner, "_load_kev_catalog", return_value=fake_catalog
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_kbs", return_value=set()
+    ), patch.object(
+        cisa_kev_scanner,
+        "_get_windows_version",
+        return_value={"caption": "Windows 10", "build": 19045},
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_software", return_value=[]
+    ):
         findings = cisa_kev_scanner.scan_cisa_kev()
     # Implementation may surface this as a finding OR (depending on
     # filtering rules) skip it. If it surfaces, severity should be HIGH+.
@@ -91,20 +106,32 @@ def test_scan_emits_critical_for_missing_kb_in_kev():
 
 
 def test_scan_does_not_double_report_when_kb_installed():
-    fake_catalog = [{
-        "cveID": "CVE-2024-77777",
-        "vendorProject": "Microsoft",
-        "product": "Windows",
-        "vulnerabilityName": "Fixed RCE",
-        "notes": "Patched by KB5031356.",
-        "dueDate": "2024-12-01",
-    }]
-    with patch.object(cisa_kev_scanner, "_load_kev_catalog", return_value=fake_catalog), \
-         patch.object(cisa_kev_scanner, "_get_installed_kbs", return_value={"KB5031356"}), \
-         patch.object(cisa_kev_scanner, "_get_windows_version",
-                      return_value={"caption": "Windows 10", "build": 19045}), \
-         patch.object(cisa_kev_scanner, "_get_installed_software", return_value=[]):
+    fake_catalog = [
+        {
+            "cveID": "CVE-2024-77777",
+            "vendorProject": "Microsoft",
+            "product": "Windows",
+            "vulnerabilityName": "Fixed RCE",
+            "notes": "Patched by KB5031356.",
+            "dueDate": "2024-12-01",
+        }
+    ]
+    with patch.object(
+        cisa_kev_scanner, "_load_kev_catalog", return_value=fake_catalog
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_kbs", return_value={"KB5031356"}
+    ), patch.object(
+        cisa_kev_scanner,
+        "_get_windows_version",
+        return_value={"caption": "Windows 10", "build": 19045},
+    ), patch.object(
+        cisa_kev_scanner, "_get_installed_software", return_value=[]
+    ):
         findings = cisa_kev_scanner.scan_cisa_kev()
     # With the patch installed, no CRITICAL finding for THIS CVE.
-    relevant = [f for f in findings if "CVE-2024-77777" in (f.get("reason", "") + f.get("title", ""))]
+    relevant = [
+        f
+        for f in findings
+        if "CVE-2024-77777" in (f.get("reason", "") + f.get("title", ""))
+    ]
     assert all(f.get("severity") != "CRITICAL" for f in relevant)

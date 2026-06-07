@@ -20,7 +20,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Module imports cleanly on Linux ─────────────────────────────────────
 
 # Scanners that hard-import Windows-only stdlib (winreg) — they can't be
@@ -77,15 +76,19 @@ def test_module_exposes_a_scan_entrypoint(modname):
 
 # ── subprocess boundary mocks ───────────────────────────────────────────
 
+
 def _mk_completed(stdout="", stderr="", returncode=0):
-    return subprocess.CompletedProcess(args=[], returncode=returncode,
-                                       stdout=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(
+        args=[], returncode=returncode, stdout=stdout, stderr=stderr
+    )
 
 
 # ── npm_check ───────────────────────────────────────────────────────────
 
+
 def test_npm_check_empty_global_list_returns_no_findings():
     import npm_check
+
     with patch.object(npm_check, "subprocess") as m_sp:
         m_sp.run.return_value = _mk_completed(stdout='{"dependencies": {}}')
         out = npm_check.scan_npm_global_list()
@@ -94,6 +97,7 @@ def test_npm_check_empty_global_list_returns_no_findings():
 
 def test_npm_check_handles_npm_not_installed():
     import npm_check
+
     with patch.object(npm_check, "subprocess") as m_sp:
         m_sp.run.side_effect = FileNotFoundError("npm not on PATH")
         out = npm_check.scan_npm_global_list()
@@ -103,17 +107,21 @@ def test_npm_check_handles_npm_not_installed():
 
 def test_npm_audit_handles_no_findings():
     import npm_check
+
     with patch.object(npm_check, "subprocess") as m_sp:
         m_sp.run.return_value = _mk_completed(
-            stdout='{"vulnerabilities":{},"metadata":{"vulnerabilities":{"total":0}}}')
+            stdout='{"vulnerabilities":{},"metadata":{"vulnerabilities":{"total":0}}}'
+        )
         out = npm_check.run_npm_audit()
     assert isinstance(out, list)
 
 
 # ── wdefender_integration ──────────────────────────────────────────────
 
+
 def test_wdefender_check_active_threats_handles_no_threats():
     import wdefender_integration
+
     with patch.object(wdefender_integration, "subprocess") as m_sp:
         m_sp.run.return_value = _mk_completed(stdout="")
         out = wdefender_integration.check_active_threats()
@@ -122,6 +130,7 @@ def test_wdefender_check_active_threats_handles_no_threats():
 
 def test_wdefender_check_active_threats_handles_powershell_missing():
     import wdefender_integration
+
     with patch.object(wdefender_integration, "subprocess") as m_sp:
         m_sp.run.side_effect = FileNotFoundError("powershell.exe")
         out = wdefender_integration.check_active_threats()
@@ -130,6 +139,7 @@ def test_wdefender_check_active_threats_handles_powershell_missing():
 
 def test_wdefender_scan_returns_list():
     import wdefender_integration
+
     with patch.object(wdefender_integration, "subprocess") as m_sp:
         m_sp.run.return_value = _mk_completed(stdout="")
         out = wdefender_integration.scan_defender()
@@ -138,9 +148,11 @@ def test_wdefender_scan_returns_list():
 
 # ── ads_scanner ────────────────────────────────────────────────────────
 
+
 @pytest.mark.skipif(not _IS_WINDOWS, reason="ads_scanner needs winreg")
 def test_ads_scanner_on_empty_directory(tmp_path):
     import ads_scanner
+
     entrypoints = [n for n in dir(ads_scanner) if n.startswith("scan_")]
     fn = getattr(ads_scanner, entrypoints[0])
     result = fn(str(tmp_path))
@@ -149,8 +161,10 @@ def test_ads_scanner_on_empty_directory(tmp_path):
 
 # ── network_scanner ────────────────────────────────────────────────────
 
+
 def test_network_scanner_with_empty_subprocess_output():
     import network_scanner
+
     # network_scanner has multiple scan_* entrypoints; pick the first.
     entrypoints = [n for n in dir(network_scanner) if n.startswith("scan_")]
     with patch.object(network_scanner, "subprocess", create=True) as m_sp:
@@ -167,15 +181,21 @@ def test_network_scanner_with_empty_subprocess_output():
 
 # ── event_parser ───────────────────────────────────────────────────────
 
+
 def test_event_parser_module_loads_and_exposes_parse():
     import event_parser
+
     # Find any callable that looks like the public entry — parse / scan / extract.
-    public_callables = [n for n in dir(event_parser)
-                        if not n.startswith("_") and callable(getattr(event_parser, n))]
+    public_callables = [
+        n
+        for n in dir(event_parser)
+        if not n.startswith("_") and callable(getattr(event_parser, n))
+    ]
     assert public_callables
 
 
 # ── yara_scanner ───────────────────────────────────────────────────────
+
 
 def test_yara_scanner_module_loads():
     """yara-python isn't installed on Ubuntu CI; the module must still

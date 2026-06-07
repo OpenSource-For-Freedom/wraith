@@ -28,18 +28,30 @@ def _f(**kwargs):
 
 
 def test_persistence_run_key_tagged_t1547():
-    findings = [_f(category="persistence", subcategory="registry_run",
-                   reason="HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run")]
+    findings = [
+        _f(
+            category="persistence",
+            subcategory="registry_run",
+            reason="HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        )
+    ]
     tagged = tag_findings(copy.deepcopy(findings))
     # The mapper writes technique_id + technique_name fields onto matched findings.
-    assert tagged[0].get("technique_id", "").startswith("T1547"), \
-        f"expected T1547* technique on run-key persistence; got {tagged[0]}"
+    assert (
+        tagged[0].get("technique_id", "").startswith("T1547")
+    ), f"expected T1547* technique on run-key persistence; got {tagged[0]}"
     assert "Registry Run" in tagged[0].get("technique_name", "")
 
 
 def test_yara_match_carries_through_tagging():
-    findings = [_f(category="yara", subcategory="yara_match",
-                   title="WannaCry match", reason="rule ransom_wannacry")]
+    findings = [
+        _f(
+            category="yara",
+            subcategory="yara_match",
+            title="WannaCry match",
+            reason="rule ransom_wannacry",
+        )
+    ]
     tagged = tag_findings(copy.deepcopy(findings))
     # Whatever tagging is applied, the original fields survive untouched.
     assert tagged[0]["category"] == "yara"

@@ -11,8 +11,8 @@ import pytest
 
 import heuristics
 
-
 # ── Entropy ─────────────────────────────────────────────────────────────
+
 
 def test_entropy_empty_is_zero():
     assert heuristics.calc_entropy(b"") == 0.0
@@ -41,11 +41,12 @@ def test_entropy_two_byte_alphabet_is_one():
 # check_pe_header returns (is_anomalous, reason). A clean PE returns
 # (False, ""); a malformed/hollowed one returns (True, "…").
 
+
 def test_pe_header_valid_returns_no_anomaly():
     # 'MZ' + e_lfanew=0x40 pointing at 'PE\0\0'. Clean PE.
     data = bytearray(0x100)
     data[0:2] = b"MZ"
-    data[0x3c:0x40] = (0x40).to_bytes(4, "little")
+    data[0x3C:0x40] = (0x40).to_bytes(4, "little")
     data[0x40:0x44] = b"PE\x00\x00"
     is_anom, reason = heuristics.check_pe_header(bytes(data))
     assert is_anom is False
@@ -56,7 +57,7 @@ def test_pe_header_missing_signature_flagged():
     # MZ present but no PE signature at e_lfanew → anomaly.
     data = bytearray(0x100)
     data[0:2] = b"MZ"
-    data[0x3c:0x40] = (0x40).to_bytes(4, "little")
+    data[0x3C:0x40] = (0x40).to_bytes(4, "little")
     data[0x40:0x44] = b"XXXX"  # wrong signature
     is_anom, reason = heuristics.check_pe_header(bytes(data))
     assert is_anom is True
@@ -64,7 +65,9 @@ def test_pe_header_missing_signature_flagged():
 
 
 def test_pe_header_non_pe_returns_false():
-    is_anom, _ = heuristics.check_pe_header(b"hello world, not an executable padded " * 4)
+    is_anom, _ = heuristics.check_pe_header(
+        b"hello world, not an executable padded " * 4
+    )
     assert is_anom is False
 
 
@@ -74,6 +77,7 @@ def test_pe_header_rejects_too_short():
 
 
 # ── Per-file heuristic scan ────────────────────────────────────────────
+
 
 def test_scan_file_missing_returns_empty(tmp_path):
     findings = heuristics.scan_file_heuristics(str(tmp_path / "nope.exe"))
@@ -92,6 +96,7 @@ def test_scan_file_uniform_low_entropy_returns_empty(tmp_path):
 def test_scan_file_high_entropy_data_flagged(tmp_path):
     # Pseudo-random bytes → high entropy → packed/encrypted heuristic.
     import os as _os
+
     p = tmp_path / "random.bin"
     p.write_bytes(_os.urandom(64 * 1024))
     findings = heuristics.scan_file_heuristics(str(p))
@@ -103,6 +108,7 @@ def test_scan_file_high_entropy_data_flagged(tmp_path):
 
 
 # ── Directory-level scan ───────────────────────────────────────────────
+
 
 def test_scan_heuristics_on_missing_dir_returns_dict():
     # The directory-level entry point should never raise; it should
