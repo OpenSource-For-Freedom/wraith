@@ -21,7 +21,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Hits](https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH.svg?style=flat-square)](https://hits.dwyl.com/OpenSource-For-Freedom/WRAITH)
 
-A native Windows threat-hunting application that orchestrates **14 scan modules** across YARA signatures, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis — all surfaced through a dark-themed WPF dashboard. WRAITH runs alongside **Windows Defender** and feeds **Microsoft Sentinel** with true-positive event sources via the OpenSource intelligence pipeline.
+A native Windows threat-hunting application that orchestrates **14 scan modules** across YARA signatures, behavioral heuristics, persistence mechanisms, supply-chain checks, and live process analysis + all surfaced through a dark-themed WPF dashboard. WRAITH runs alongside **Windows Defender** and feeds **Microsoft Sentinel** with true-positive event sources via the OpenSource intelligence pipeline.
 
 [Installation](#installation) · [Scan Modules](#scan-modules) · [Usage](#usage) · [Output](#output) · [Docs](docs/)
 
