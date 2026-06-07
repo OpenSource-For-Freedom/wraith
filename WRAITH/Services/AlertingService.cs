@@ -68,9 +68,6 @@ public sealed class AlertingService
         if (!policy.SlackWebhookUrl.StartsWith("https://hooks.slack.com/", StringComparison.OrdinalIgnoreCase))
             return (false, "Invalid Slack webhook URL. It should start with https://hooks.slack.com/");
 
-        if (!(result.Summary.Critical > 0 || (policy.SlackNotifyOnHigh && result.Summary.High > 0)))
-            return (false, "No Critical/High findings requiring Slack alert");
-
         var payload = BuildSlackPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.SlackWebhookUrl, payload, "Slack", ct);
     }
@@ -79,14 +76,14 @@ public sealed class AlertingService
         ScanResult result, AutomatedResponseReport soar, string scanPath,
         ResponsePolicy policy, CancellationToken ct = default)
     {
-        if (!policy.EnableDiscordWebhook)         return (false, "Discord webhook is disabled in policy");
-        if (string.IsNullOrWhiteSpace(policy.DiscordWebhookUrl)) return (false, "Discord webhook URL is empty");
+        // Diagnostics: always surface the exact gate that blocks the send.
+        if (!policy.EnableDiscordWebhook)
+            return (false, $"Discord webhook is disabled in policy (URL={policy.DiscordWebhookUrl?.Length > 0})");
+        if (string.IsNullOrWhiteSpace(policy.DiscordWebhookUrl))
+            return (false, "Discord webhook URL is empty in policy");
         if (!policy.DiscordWebhookUrl.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) &&
             !policy.DiscordWebhookUrl.StartsWith("https://discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
-            return (false, "Invalid Discord webhook URL. Go to Server Settings → Integrations → Webhooks to copy the correct URL (starts with https://discord.com/api/webhooks/)");
-
-        if (!(result.Summary.Critical > 0 || (policy.DiscordNotifyOnHigh && result.Summary.High > 0)))
-            return (false, "No Critical/High findings requiring Discord alert");
+            return (false, $"Invalid Discord webhook URL (got: {policy.DiscordWebhookUrl[..Math.Min(60, policy.DiscordWebhookUrl.Length)]}…). Must start with https://discord.com/api/webhooks/");
 
         var payload = BuildDiscordPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.DiscordWebhookUrl, payload, "Discord", ct);

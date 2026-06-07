@@ -1013,39 +1013,56 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            var p = _autoResponse.LoadPolicy();
-            p.DiscordWebhookUrl = (DiscordWebhookUrl ?? "").Trim();
-            p.DiscordNotifyOnHigh = DiscordNotifyOnHigh;
-            p.EnableDiscordWebhook = !string.IsNullOrWhiteSpace(p.DiscordWebhookUrl);
-            if (!p.EnableDiscordWebhook)
+            var url = (DiscordWebhookUrl ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(url))
             {
-                AppendLog("[WARN] Discord test skipped: webhook is not configured.");
+                AppendLog("[WARN] Discord test skipped: no webhook URL entered.");
+                return;
+            }
+            if (!url.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("https://discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
+            {
+                AppendLog("[WARN] Discord test skipped: URL must start with https://discord.com/api/webhooks/");
                 return;
             }
 
-            var testResult = new ScanResult
+            // Send a minimal ping embed — no scan data, no report, just connectivity test.
+            var ping = System.Text.Json.JsonSerializer.Serialize(new
             {
-                Scanner = "WRAITH",
-                Mode = "test",
-                Timestamp = DateTime.Now,
-                Findings = new List<ThreatFinding>
+                username = "WRAITH",
+                embeds = new[]
                 {
-                    new()
+                    new
                     {
-                        Severity = Severity.Critical,
-                        Category = "integrations",
-                        Subcategory = "discord",
-                        Title = "Discord webhook test",
-                        Path = ScanPath,
-                        Reason = "Manual Discord test from WRAITH settings"
+                        title = "WRAITH — Webhook Connected",
+                        description = "Discord webhook is configured correctly. Scan alerts will be delivered here.",
+                        color = 0x57F287,   // green
+                        footer = new { text = "WRAITH · Windows Runtime Analysis & Intrusion Threat Hunter" },
+                        timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
                     }
-                },
-                Summary = new ScanSummary { Critical = 1, High = 0, Medium = 0, Low = 0, Info = 0, Total = 1 }
-            };
+                }
+            });
 
-            var testSoar = new AutomatedResponseReport();
-            var (sent, msg) = await _alerting.SendDiscordAlertAsync(testResult, testSoar, ScanPath, p);
-            AppendLog(sent ? "[DONE] Discord test alert sent." : $"[WARN] Discord test failed: {msg}");
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var req  = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url)
+            {
+                Content = new System.Net.Http.StringContent(ping, System.Text.Encoding.UTF8, "application/json")
+            };
+            using var res = await http.SendAsync(req);
+            if (res.IsSuccessStatusCode)
+                AppendLog("[DONE] Discord test message sent.");
+            else
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                AppendLog($"[WARN] Discord test failed: HTTP {(int)res.StatusCode} — {body[..Math.Min(200, body.Length)]}");
+            }
+
+            // Persist the URL now that it's confirmed working.
+            var p = _autoResponse.LoadPolicy();
+            p.DiscordWebhookUrl    = url;
+            p.EnableDiscordWebhook = true;
+            p.DiscordNotifyOnHigh  = DiscordNotifyOnHigh;
+            _autoResponse.SavePolicy(p);
         }
         catch (Exception ex)
         {
