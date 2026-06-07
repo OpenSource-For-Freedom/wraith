@@ -25,8 +25,18 @@ on:
     tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 permissions:
-  contents:          write   
-  security-events:   write   
+  contents:          write
+  security-events:   write
+
+# Serialize runs per ref so two overlapping main pushes can't both
+# compute the same $nextStable and race the tag creation. cancel-in-progress
+# is deliberately false — each merge to main is its own release, so the
+# second run waits for the first to publish (and bump the tag space) before
+# it derives its own version. Tag-push runs are scoped by their unique tag
+# ref, so they never collide.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
