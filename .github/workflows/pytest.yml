@@ -13,7 +13,11 @@ permissions:
 
 jobs:
   pytest:
-    name: scanner unit tests
+    # Job name matches the workflow filename so the branch protection
+    # rule configured against "pytest.yml" actually resolves to this
+    # check. GitHub Actions reports checks by job `name:` (or, if
+    # omitted, the job key), not by workflow file path.
+    name: pytest.yml
     # WRAITH is a Windows app — the scanners call PowerShell, winreg, and
     # pywin32. Running tests on a Windows runner means the platform-conditional
     # skips activate as REAL tests instead of being silently skipped on Ubuntu.

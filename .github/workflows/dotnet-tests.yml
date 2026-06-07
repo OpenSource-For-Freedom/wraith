@@ -14,7 +14,10 @@ permissions:
 
 jobs:
   dotnet-tests:
-    name: WRAITH.Tests (xUnit)
+    # Job name matches the workflow filename so the branch protection
+    # rule configured against "dotnet-tests.yml" actually resolves to
+    # this check. See pytest.yml for the same fix.
+    name: dotnet-tests.yml
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6

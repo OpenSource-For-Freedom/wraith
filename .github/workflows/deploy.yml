@@ -653,5 +653,13 @@ jobs:
           print(json.dumps(payload))
           PY
 
-          curl -sS -X POST -H 'Content-Type: application/json' \
-               --data @payload.json "${WEBHOOK}"
+          # Best-effort POST. Two failure modes covered:
+          #  - DNS/network errors → curl exits non-zero on its own.
+          #  - HTTP error responses (429 rate-limit, 5xx) → without --fail,
+          #    curl -sS exits 0 on any HTTP status. --fail makes it exit
+          #    22 on >=400 so the warning branch actually runs.
+          # Either way, the release itself isn't affected; the catch-all
+          # `|| echo ::warning` keeps `set -euo pipefail` happy.
+          curl --fail -sS -X POST -H 'Content-Type: application/json' \
+               --data @payload.json "${WEBHOOK}" \
+            || echo "::warning::Discord notification POST failed (transient network, rate limit, or 5xx); release itself was not affected."

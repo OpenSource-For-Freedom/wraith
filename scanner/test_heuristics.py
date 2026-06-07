@@ -94,17 +94,21 @@ def test_scan_file_uniform_low_entropy_returns_empty(tmp_path):
 
 
 def test_scan_file_high_entropy_data_flagged(tmp_path):
-    # Pseudo-random bytes → high entropy → packed/encrypted heuristic.
+    """High-entropy data in an executable extension should produce a
+    'high_entropy' / 'packed' finding. scan_file_heuristics only inspects
+    .exe / .dll / .sys / .scr (see the gating in heuristics.py), so we
+    write into a .exe to actually exercise the entropy branch."""
     import os as _os
 
-    p = tmp_path / "random.bin"
+    p = tmp_path / "random.exe"
     p.write_bytes(_os.urandom(64 * 1024))
     findings = heuristics.scan_file_heuristics(str(p))
-    # Either a high-entropy flag or no findings at all is acceptable — but if
-    # the module DOES flag entropy, the subcategory should mention it.
-    if findings:
-        joined = " ".join(f.get("subcategory") or "" for f in findings).lower()
-        assert "entropy" in joined or "packed" in joined or joined == "" or True
+    # Random bytes → entropy ~8.0 → must produce at least one finding.
+    assert findings, "high-entropy .exe should produce at least one finding"
+    joined = " ".join(f.get("subcategory") or "" for f in findings).lower()
+    assert (
+        "entropy" in joined or "packed" in joined
+    ), f"expected entropy/packed subcategory, got {[f.get('subcategory') for f in findings]}"
 
 
 # ── Directory-level scan ───────────────────────────────────────────────
