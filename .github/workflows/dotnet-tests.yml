@@ -1,0 +1,30 @@
+name: dotnet test
+
+on:
+  pull_request:
+    paths:
+      - 'WRAITH/**'
+      - 'WRAITH.Tests/**'
+      - 'ThreatScanner.sln'
+      - '.github/workflows/dotnet-tests.yml'
+# Main-push coverage is handled inline by deploy.yml.
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet-tests:
+    name: WRAITH.Tests (xUnit)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore WRAITH.Tests/WRAITH.Tests.csproj
+      - name: Build tests
+        run: dotnet build WRAITH.Tests/WRAITH.Tests.csproj --configuration Release --no-restore
+      - name: Run tests
+        run: dotnet test WRAITH.Tests/WRAITH.Tests.csproj --configuration Release --no-build --logger "console;verbosity=detailed"

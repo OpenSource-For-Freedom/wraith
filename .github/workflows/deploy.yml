@@ -44,6 +44,8 @@ jobs:
             api.nuget.org:443
             pypi.org:443
             files.pythonhosted.org:443
+            discord.com:443
+            discordapp.com:443
             timestamp.digicert.com:443
             dl.dod.certificate.gov:443
 
@@ -183,6 +185,30 @@ jobs:
             --output ./publish
           Write-Host "Published files:"
           Get-ChildItem ./publish | Select-Object Name, Length
+
+      # ── Test gates ────────────────────────────────────────────────────────
+      # Run BOTH suites before we sign / pack / release. Any failure aborts
+      # the job before artefacts hit GitHub Releases.
+
+      - name: Setup Python (for pytest)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest deps
+        run: pip install --no-input pytest requests pywin32
+
+      - name: Run pytest (scanner unit tests)
+        working-directory: scanner
+        run: pytest -v
+
+      - name: Restore + build WRAITH.Tests
+        run: |
+          dotnet restore WRAITH.Tests/WRAITH.Tests.csproj
+          dotnet build WRAITH.Tests/WRAITH.Tests.csproj --configuration Release --no-restore
+
+      - name: Run dotnet test (xUnit services suite)
+        run: dotnet test WRAITH.Tests/WRAITH.Tests.csproj --configuration Release --no-build --logger "console;verbosity=normal"
 
       - name: Generate .NET SBOM (SPDX)
         uses: anchore/sbom-action@v0
@@ -569,3 +595,63 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ steps.ver.outputs.version }} ./velopack-out/* --clobber
+
+  # ── Discord notification ──────────────────────────────────────────────────
+  # Runs after build-and-release with `if: always()` so it fires on BOTH
+  # success and failure. Pulls the last few first-parent commits from this
+  # push so the channel sees what landed (or what tried to). DISCORD_ALERT
+  # is the webhook URL secret — the job no-ops if it isn't set.
+  notify-discord:
+    name: Notify Discord
+    needs: build-and-release
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 20
+
+      - name: Post status to Discord
+        shell: bash
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_ALERT }}
+          STATUS:  ${{ needs.build-and-release.result }}
+          REPO:    ${{ github.repository }}
+          REF:     ${{ github.ref_name }}
+          ACTOR:   ${{ github.actor }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK:-}" ]; then
+            echo "DISCORD_ALERT secret not set — skipping notification."
+            exit 0
+          fi
+
+          # Compact commit list — last 5 first-parent commits, one per line.
+          # Discord embed field caps at 1024 chars; trim defensively.
+          commits=$(git log -5 --first-parent --pretty=format:'• `%h` %s' | head -c 900)
+
+          python3 - "$STATUS" "$REPO" "$REF" "$ACTOR" "$RUN_URL" "$commits" <<'PY' > payload.json
+          import json, sys
+          status, repo, ref, actor, run_url, commits = sys.argv[1:]
+          ok = status == "success"
+          payload = {
+              "username": "WRAITH CI",
+              "embeds": [{
+                  "title":  ("✅ WRAITH build succeeded" if ok
+                             else f"❌ WRAITH build FAILED ({status})"),
+                  "url":    run_url,
+                  "color":  3066993 if ok else 15158332,
+                  "fields": [
+                      {"name": "Repo / Ref", "value": f"`{repo}` @ `{ref}`", "inline": True},
+                      {"name": "Pushed by",  "value": f"@{actor}",          "inline": True},
+                      {"name": "Recent commits", "value": commits or "_(none)_", "inline": False},
+                  ],
+                  "footer": {"text": "GitHub Actions · build-and-release"},
+              }],
+          }
+          print(json.dumps(payload))
+          PY
+
+          curl -sS -X POST -H 'Content-Type: application/json' \
+               --data @payload.json "${WEBHOOK}"
