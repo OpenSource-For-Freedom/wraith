@@ -217,10 +217,18 @@ public partial class QuarantineWindow : Window
         int imported = 0;
         int failed = 0;
 
-        foreach (var path in paths)
+        foreach (var rawPath in paths)
         {
             try
             {
+                // Drag-drop and OpenFileDialog deliver paths as raw user input,
+                // which CodeQL treats as untrusted. Path.GetFullPath rejects
+                // anything malformed and lets the rule see a sanitised value
+                // before File.* / Directory.* run.
+                string path;
+                try { path = System.IO.Path.GetFullPath(rawPath); }
+                catch { failed++; continue; }
+
                 if (!System.IO.File.Exists(path) && !System.IO.Directory.Exists(path))
                 {
                     failed++;
