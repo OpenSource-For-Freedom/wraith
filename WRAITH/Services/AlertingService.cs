@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using WRAITH.Models;
 
 namespace WRAITH.Services;
@@ -33,6 +34,8 @@ public sealed class AlertingService
     {
         if (!policy.EnableSlackWebhook)         return (false, "Slack webhook is disabled in policy");
         if (string.IsNullOrWhiteSpace(policy.SlackWebhookUrl)) return (false, "Slack webhook URL is empty");
+        if (!policy.SlackWebhookUrl.StartsWith("https://hooks.slack.com/", StringComparison.OrdinalIgnoreCase))
+            return (false, "Invalid Slack webhook URL. It should start with https://hooks.slack.com/");
 
         if (!(result.Summary.Critical > 0 || (policy.SlackNotifyOnHigh && result.Summary.High > 0)))
             return (false, "No Critical/High findings requiring Slack alert");
@@ -47,6 +50,9 @@ public sealed class AlertingService
     {
         if (!policy.EnableDiscordWebhook)         return (false, "Discord webhook is disabled in policy");
         if (string.IsNullOrWhiteSpace(policy.DiscordWebhookUrl)) return (false, "Discord webhook URL is empty");
+        if (!policy.DiscordWebhookUrl.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) &&
+            !policy.DiscordWebhookUrl.StartsWith("https://discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
+            return (false, "Invalid Discord webhook URL. Go to Server Settings → Integrations → Webhooks to copy the correct URL (starts with https://discord.com/api/webhooks/)");
 
         if (!(result.Summary.Critical > 0 || (policy.DiscordNotifyOnHigh && result.Summary.High > 0)))
             return (false, "No Critical/High findings requiring Discord alert");
@@ -59,65 +65,63 @@ public sealed class AlertingService
 
     private static string BuildDiscordPayload(ScanResult result, AutomatedResponseReport soar, string scanPath)
     {
-        var level   = result.Summary.ThreatLevel?.ToUpperInvariant() ?? "UNKNOWN";
-        var color   = LevelToDiscordColor(level);
-        var title   = $"THREAT LEVEL: {level}";
-        var ts      = result.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
-        var impact  = BuildImpactAnalysis(result, soar, scanPath);
+        var level  = result.Summary.ThreatLevel?.ToUpperInvariant() ?? "UNKNOWN";
+        var color  = LevelToDiscordColor(level);
+        var ts     = result.Timestamp.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var impact = BuildImpactAnalysis(result, soar, scanPath);
 
-        var topFindings = TopFindings(result);
+        var topFindings  = TopFindings(result);
         var summaryTable = BuildDiscordSummaryTable(result, soar);
-        var findingsTable = BuildDiscordFindingsTable(topFindings);
+        var findingsList = BuildDiscordFindingsList(topFindings, result.Findings.Count);
 
-        var soarValue = soar.ActionsTaken > 0
-            ? $"**{soar.ActionsTaken}** action(s)  |  **{soar.ProcessesKilled}** killed  |  **{soar.FilesQuarantined}** quarantined"
+        var soarLine = soar.ActionsTaken > 0
+            ? $"**{soar.ActionsTaken}** action(s)  ·  **{soar.ProcessesKilled}** killed  ·  **{soar.FilesQuarantined}** quarantined"
             : "_No automated actions taken._";
 
-        var quarantineOutcome = BuildQuarantineOutcome(soar);
+        var responseSummary =
+            $"**SOAR:** {soarLine}\n" +
+            $"**Quarantine:** {Trim(BuildQuarantineOutcome(soar), 180)}\n\n" +
+            $"**Impact:** {impact.EstimatedImpact}\n" +
+            $"**Risk Index:** {impact.RiskIndex}/100  ·  **Confidence:** {impact.ConfidencePercent}%\n\n" +
+            Trim(impact.RecommendedActions, 350);
 
-        var impactValue =
-            $"**Estimated Impact:** {impact.EstimatedImpact}\n" +
-            $"**Confidence:** {impact.ConfidencePercent}%\n" +
-            $"**Primary Assets:** {impact.PrimaryAssets}\n" +
-            $"**Risk Index:** {impact.RiskIndex}/100\n\n" +
-            $"**Evidence:**\n{impact.EvidenceLines}";
-
-        var actionsValue = impact.RecommendedActions;
-
-        var embed = new
+        // Use JsonObject/JsonArray — System.Text.Json cannot serialize anonymous
+        // types stored in object[] at runtime (produces {} for each element).
+        var fields = new JsonArray
         {
-            title,
-            color,
-            description = $"A threat hunt completed on **{Trim(scanPath, 80)}** and identified findings requiring review.",
-            fields = new object[]
-            {
-                new { name = "Scan Target",  value = $"`{Trim(scanPath, 80)}`", inline = true  },
-                new { name = "Scan Time",    value = result.Timestamp.ToString("yyyy-MM-dd HH:mm"), inline = true },
-                new { name = "\u200b",       value = "\u200b", inline = false }, // spacer row
-                new { name = "Critical", value = $"**{result.Summary.Critical}**", inline = true },
-                new { name = "High",     value = $"**{result.Summary.High}**",     inline = true },
-                new { name = "Medium",   value = $"**{result.Summary.Medium}**",   inline = true },
-                new { name = "Low",      value = $"**{result.Summary.Low}**",      inline = true },
-                new { name = "Info",     value = $"**{result.Summary.Info}**",     inline = true },
-                new { name = "\u200b",   value = "\u200b", inline = false },
-                new { name = "Alert Matrix", value = summaryTable, inline = false },
-                new { name = "SOAR Response", value = soarValue,      inline = false },
-                new { name = "Quarantine Outcome", value = Trim(quarantineOutcome, 1000), inline = false },
-                new { name = "Impact Analysis", value = Trim(impactValue, 1000), inline = false },
-                new { name = "Recommended Response", value = Trim(actionsValue, 1000), inline = false },
-                new { name = $"Top Findings (Critical / High)", value = findingsTable, inline = false },
-            },
-            footer    = new { text = Footer, icon_url = AvatarUrl },
-            timestamp = ts,
+            DiscordField("Critical", $"**{result.Summary.Critical}**", inline: true),
+            DiscordField("High",     $"**{result.Summary.High}**",     inline: true),
+            DiscordField("Medium",   $"**{result.Summary.Medium}**",   inline: true),
+            DiscordField("Low",      $"**{result.Summary.Low}**",      inline: true),
+            DiscordField("Info",     $"**{result.Summary.Info}**",     inline: true),
+            DiscordField("\u200b",   "\u200b",                         inline: true),
+            DiscordField("Alert Matrix",                    Trim(summaryTable,  1024), inline: false),
+            DiscordField("Top Findings (Critical / High)", Trim(findingsList,  1024), inline: false),
+            DiscordField("Response Summary",               Trim(responseSummary, 1024), inline: false),
         };
 
-        return JsonSerializer.Serialize(new
+        var embed = new JsonObject
         {
-            username   = "WRAITH",
-            avatar_url = AvatarUrl,
-            embeds     = new[] { embed }
-        });
+            ["title"]       = $"THREAT LEVEL: {level}",
+            ["color"]       = color,
+            ["description"] = $"Threat hunt completed on **{Trim(scanPath, 80)}** at **{result.Timestamp:yyyy-MM-dd HH:mm}**",
+            ["fields"]      = fields,
+            ["footer"]      = new JsonObject { ["text"] = Footer, ["icon_url"] = AvatarUrl },
+            ["timestamp"]   = ts,
+        };
+
+        var payload = new JsonObject
+        {
+            ["username"]   = "WRAITH",
+            ["avatar_url"] = AvatarUrl,
+            ["embeds"]     = new JsonArray { embed },
+        };
+
+        return payload.ToJsonString();
     }
+
+    private static JsonObject DiscordField(string name, string value, bool inline) =>
+        new() { ["name"] = name, ["value"] = value, ["inline"] = inline };
 
     // ── Slack — Block Kit ───────────────────────────────────────────────────────
 
@@ -261,6 +265,26 @@ public sealed class AlertingService
         return sb.ToString();
     }
 
+    private static string BuildDiscordFindingsList(List<ThreatFinding> findings, int totalCount = 0)
+    {
+        if (findings.Count == 0)
+            return "_No critical/high findings._";
+
+        var sb = new StringBuilder();
+        foreach (var f in findings)
+        {
+            var target = !string.IsNullOrWhiteSpace(f.Path)
+                ? f.Path
+                : string.IsNullOrWhiteSpace(f.Package) ? "n/a" : f.Package;
+            var category = string.IsNullOrWhiteSpace(f.Category) ? "unknown" : f.Category;
+            sb.AppendLine($"**[{f.SeverityLabel}]** {Trim(f.Title, 50)}  ·  `{Trim(category, 14)}`");
+            sb.AppendLine($"> `{Trim(target, 70)}`");
+        }
+        if (totalCount > findings.Count)
+            sb.AppendLine($"_… and {totalCount - findings.Count} more. Export full report for complete listing._");
+        return sb.ToString().TrimEnd();
+    }
+
     private static string PadRight(string value, int width)
     {
         if (value.Length >= width)
@@ -329,26 +353,30 @@ public sealed class AlertingService
 
         var primaryAssets = topAssets.Count > 0 ? string.Join(", ", topAssets) : Trim(scanPath, 80);
 
-        var risk = (result.Summary.Critical * 20)
-                 + (result.Summary.High * 8)
-                 + (result.Summary.Medium * 3)
-                 + (result.Summary.Low)
-                 + (executionHits * 2)
-                 + (persistenceHits * 3)
-                 + (credentialHits * 4)
-                 + (c2Hits * 4)
-                 + (defenseEvasionHits * 3);
+        // Base score: Critical findings floor at 45 so a single critical always
+        // reaches "Suspicious activity" — avoids the contradiction of a CRITICAL
+        // threat level paired with a "low-confidence / continue validation" label.
+        var risk = (result.Summary.Critical * 45)
+                 + (result.Summary.High * 15)
+                 + (result.Summary.Medium * 5)
+                 + (result.Summary.Low * 2)
+                 + (executionHits * 4)
+                 + (persistenceHits * 6)
+                 + (credentialHits * 7)
+                 + (c2Hits * 7)
+                 + (defenseEvasionHits * 5);
         risk = Math.Clamp(risk, 0, 100);
 
+        var corroborating = executionHits + persistenceHits + credentialHits + c2Hits + defenseEvasionHits;
         var confidence = Math.Clamp(35
             + (result.Summary.Critical > 0 ? 25 : 0)
-            + (result.Summary.High > 0 ? 15 : 0)
-            + Math.Min(20, executionHits + persistenceHits + credentialHits + c2Hits + defenseEvasionHits), 0, 98);
+            + (result.Summary.High > 0 ? 10 : 0)
+            + Math.Min(28, corroborating * 4), 0, 98);
 
         var impact = risk >= 85 ? "Potential host compromise with active persistence/execution indicators"
                  : risk >= 65 ? "Likely malicious activity with elevated operational risk"
-                 : risk >= 45 ? "Suspicious activity with moderate containment urgency"
-                 : "Low-confidence malicious activity; continue validation";
+                 : risk >= 45 ? "Suspicious activity detected — validate findings and prepare containment"
+                 : "Low-severity anomalies — continue monitoring and run a full deep scan";
 
         var evidenceLines = new List<string>
         {
@@ -362,8 +390,13 @@ public sealed class AlertingService
         };
 
         var actions = new List<string>();
-        if (result.Summary.Critical > 0)
+        // Only recommend network isolation when there is real corroborating evidence
+        // alongside critical findings — avoids a false "isolate immediately" on a
+        // single unconfirmed critical hit with no execution/C2/persistence context.
+        if (result.Summary.Critical > 0 && (corroborating > 0 || result.Summary.Critical >= 2))
             actions.Add("- Isolate the endpoint from the network immediately.");
+        else if (result.Summary.Critical > 0)
+            actions.Add("- Treat as high-priority: validate the critical finding and monitor for further indicators before isolating.");
         if (executionHits > 0)
             actions.Add("- Triage live processes and collect volatile memory for forensic review.");
         if (persistenceHits > 0)
@@ -375,7 +408,7 @@ public sealed class AlertingService
         if (c2Hits > 0)
             actions.Add("- Block suspected external destinations and review DNS/network telemetry.");
         if (actions.Count == 0)
-            actions.Add("- Continue containment monitoring and run a full deep scan to validate indicators.");
+            actions.Add("- Continue monitoring and run a full deep scan to validate indicators.");
 
         return new ImpactModel
         {
@@ -466,7 +499,11 @@ public sealed class AlertingService
 
             using var res = await _http.SendAsync(req, linked.Token);
             if (!res.IsSuccessStatusCode)
-                return (false, $"{channelName} post failed with HTTP {(int)res.StatusCode}");
+            {
+                var body = await res.Content.ReadAsStringAsync(CancellationToken.None);
+                var detail = string.IsNullOrWhiteSpace(body) ? string.Empty : $" — {body}";
+                return (false, $"{channelName} post failed with HTTP {(int)res.StatusCode}{detail}");
+            }
 
             return (true, $"{channelName} alert sent");
         }
