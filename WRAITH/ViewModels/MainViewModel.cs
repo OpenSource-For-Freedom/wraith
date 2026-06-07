@@ -520,6 +520,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         var pythonPath = await bootstrapper.EnsureDependenciesAsync(baseDir);
 
+        // Re-register any user-enabled scheduled tasks against the current
+        // install's paths. A Velopack update would otherwise leave Task
+        // Scheduler pointing at a stale app-x.y.z\ directory; re-registering
+        // with -Force overwrites cleanly. Safe to skip when bootstrap failed —
+        // there'd be no python path to write into the action arguments anyway.
+        if (pythonPath != null)
+        {
+            try { await new AutomationMenuService().ResyncTasksAsync(); }
+            catch (Exception ex) { AppendLog($"[automation] task resync skipped: {ex.Message}"); }
+        }
+
         CurrentPhase = pythonPath == null
             ? "Setup required — see log for instructions"
             : "Awaiting your command...";

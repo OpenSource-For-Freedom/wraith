@@ -15,7 +15,7 @@ public sealed class AutomationMenuService
 
     private string AutomationDir => Path.Combine(_baseDir, "automation");
     private string ScannerDir    => Path.Combine(_baseDir, "scanner");
-    private string EnvJsonPath   => Path.Combine(_baseDir, "wraith.env.json");
+    private string EnvJsonPath   => BootstrapService.GetStableEnvJsonPath();
 
     /// <summary>
     /// Resolves the python.exe path baked into wraith.env.json by the bootstrap
@@ -42,6 +42,127 @@ public sealed class AutomationMenuService
         return "python";
     }
 
+    // ── User preference persistence ──────────────────────────────────────
+    // Tray menu choices are written into the stable env.json so they survive
+    // both app restarts and Velopack version bumps. ResyncTasksAsync re-reads
+    // them at every launch and re-registers the scheduled tasks against the
+    // current install's automation/ + scanner/ paths — that closes the loop
+    // where a Velopack update silently invalidates the absolute paths baked
+    // into Task Scheduler entries.
+
+    private void MergeEnvJson(Action<Dictionary<string, JsonElement>> mutate)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(EnvJsonPath)!);
+
+            var current = new Dictionary<string, JsonElement>();
+            if (File.Exists(EnvJsonPath))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(File.ReadAllText(EnvJsonPath));
+                    foreach (var p in doc.RootElement.EnumerateObject())
+                        current[p.Name] = p.Value.Clone();
+                }
+                catch { /* tolerate a corrupted file by overwriting */ }
+            }
+
+            mutate(current);
+
+            using var ms = new MemoryStream();
+            using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+            {
+                w.WriteStartObject();
+                foreach (var kv in current)
+                {
+                    w.WritePropertyName(kv.Key);
+                    kv.Value.WriteTo(w);
+                }
+                w.WriteEndObject();
+            }
+            File.WriteAllBytes(EnvJsonPath, ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[automation] env.json write failed: {ex.Message}");
+        }
+    }
+
+    private static JsonElement IntElement(int v)
+    {
+        using var doc = JsonDocument.Parse(v.ToString());
+        return doc.RootElement.Clone();
+    }
+    private static JsonElement BoolElement(bool v)
+    {
+        using var doc = JsonDocument.Parse(v ? "true" : "false");
+        return doc.RootElement.Clone();
+    }
+    private static JsonElement StringElement(string v)
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(v));
+        return doc.RootElement.Clone();
+    }
+
+    private void WriteAutoScanPreference(int minutes, string scanPath) => MergeEnvJson(d =>
+    {
+        d["auto_scan_minutes"] = IntElement(minutes);
+        d["auto_scan_path"]    = StringElement(scanPath);
+    });
+
+    private void ClearAutoScanPreference() => MergeEnvJson(d => d["auto_scan_minutes"] = IntElement(0));
+
+    private void WritePersistencePreference(bool enabled, string scanPath) => MergeEnvJson(d =>
+    {
+        d["persistence_enabled"]   = BoolElement(enabled);
+        d["persistence_scan_path"] = StringElement(scanPath);
+    });
+
+    private void ClearPersistencePreference() => MergeEnvJson(d => d["persistence_enabled"] = BoolElement(false));
+
+    /// <summary>
+    /// Re-registers any user-enabled scheduled tasks against the current
+    /// install's paths. Called once at app launch after BootstrapService
+    /// completes, so a Velopack update that moved the install dir doesn't
+    /// leave Task Scheduler pointing at a stale app-x.y.z folder.
+    /// Idempotent — Register-ScheduledTask -Force overwrites cleanly.
+    /// </summary>
+    public async Task ResyncTasksAsync()
+    {
+        if (!File.Exists(EnvJsonPath)) return;
+
+        int autoScanMinutes = 0;
+        string autoScanPath = string.Empty;
+        bool persistenceEnabled = false;
+        string persistenceScanPath = string.Empty;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(EnvJsonPath));
+            var root = doc.RootElement;
+            if (root.TryGetProperty("auto_scan_minutes", out var m) && m.ValueKind == JsonValueKind.Number)
+                autoScanMinutes = m.GetInt32();
+            if (root.TryGetProperty("auto_scan_path", out var ap) && ap.ValueKind == JsonValueKind.String)
+                autoScanPath = ap.GetString() ?? string.Empty;
+            if (root.TryGetProperty("persistence_enabled", out var pe))
+                persistenceEnabled = pe.ValueKind == JsonValueKind.True;
+            if (root.TryGetProperty("persistence_scan_path", out var ps) && ps.ValueKind == JsonValueKind.String)
+                persistenceScanPath = ps.GetString() ?? string.Empty;
+        }
+        catch { return; }
+
+        if (autoScanMinutes > 0)
+        {
+            var path = string.IsNullOrWhiteSpace(autoScanPath) ? "C:\\" : autoScanPath;
+            await SetTimedScanAsync(autoScanMinutes, path);
+        }
+        if (persistenceEnabled)
+        {
+            var path = string.IsNullOrWhiteSpace(persistenceScanPath) ? "C:\\" : persistenceScanPath;
+            await EnablePersistenceListenerAsync(path);
+        }
+    }
+
     public async Task<(bool ok, string output)> SetTimedScanAsync(int intervalMinutes, string scanPath)
     {
         var script = Path.Combine(AutomationDir, "Register-WraithTimedScan.ps1");
@@ -50,7 +171,9 @@ public sealed class AutomationMenuService
 
         var pythonPath = ResolvePythonPath();
         var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -IntervalMinutes {intervalMinutes} -ScanPath \"{scanPath}\" -Hours 24 -Mode all -RunAsSystem -PythonPath \"{pythonPath}\" -ScannerDir \"{ScannerDir}\"";
-        return await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(args);
+        if (result.ok) WriteAutoScanPreference(intervalMinutes, scanPath);
+        return result;
     }
 
     public async Task<(bool ok, string output)> DisableTimedScanAsync()
@@ -60,7 +183,9 @@ public sealed class AutomationMenuService
             return (false, $"Missing script: {script}");
 
         var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
-        return await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(args);
+        if (result.ok) ClearAutoScanPreference();
+        return result;
     }
 
     public async Task<(bool ok, string output)> EnablePersistenceListenerAsync(string scanPath)
@@ -71,7 +196,9 @@ public sealed class AutomationMenuService
 
         var pythonPath = ResolvePythonPath();
         var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -ScanPath \"{scanPath}\" -PollSeconds 120 -PythonPath \"{pythonPath}\" -ScannerDir \"{ScannerDir}\"";
-        return await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(args);
+        if (result.ok) WritePersistencePreference(true, scanPath);
+        return result;
     }
 
     public async Task<(bool ok, string output)> DisablePersistenceListenerAsync()
@@ -81,7 +208,9 @@ public sealed class AutomationMenuService
             return (false, $"Missing script: {script}");
 
         var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
-        return await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(args);
+        if (result.ok) ClearPersistencePreference();
+        return result;
     }
 
     private static async Task<(bool ok, string output)> RunPowerShellAsync(string args)
