@@ -375,7 +375,10 @@ public class ScanOrchestrator
             ("Browser Integrity",    () => RunPythonScanAsync("browser",     scanPath, eventHours, ct)),
             ("Defender Integration", () => RunPythonScanAsync("defender",    scanPath, eventHours, ct)),
             ("Credential Audit",     () => RunPythonScanAsync("credential",  scanPath, eventHours, ct)),
-            ("CISA KEV Check",       () => RunPythonScanAsync("kev",         scanPath, eventHours, ct)),
+            ("CISA KEV Check",       () => RunPythonScanAsync("kev",          scanPath, eventHours, ct)),
+            ("Vulnerable Drivers",   () => RunPythonScanAsync("vuln_drivers", scanPath, eventHours, ct)),
+            ("Tor Exit Nodes",       () => RunPythonScanAsync("tor",          scanPath, eventHours, ct)),
+            ("DigitalSide Intel",    () => RunPythonScanAsync("intel",        scanPath, eventHours, ct)),
             ("Native File Scan",     () => RunNativeScanAsync(scanPath, ct: ct)),
         };
 

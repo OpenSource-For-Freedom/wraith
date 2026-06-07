@@ -18,6 +18,10 @@ public enum FindingCategory
     Npm,
     Processes,
     NativeScan,
+    // Threat-intel-feed-driven categories (no API key bundle):
+    VulnDriver,   // BYOVD match against MS recommended driver blocklist
+    Network,      // Tor exit-node match, suspicious connection
+    Intel,        // DigitalSide OSINT IP/domain/hash match
     Unknown
 }
 
@@ -92,6 +96,9 @@ public class ThreatFinding
         "events"      => FindingCategory.Events,
         "npm"         => FindingCategory.Npm,
         "processes"   => FindingCategory.Processes,
+        "vuln_driver" => FindingCategory.VulnDriver,
+        "network"     => FindingCategory.Network,
+        "intel"       => FindingCategory.Intel,
         _             => FindingCategory.Unknown
     };
 }
