@@ -1,14 +1,17 @@
-"""Smoke + behavioural tests for the Windows-only scanners.
+"""Smoke + behavioural tests for the Windows scanner modules.
 
 These modules call PowerShell / WMI / pywin32. The tests:
-  1. Verify each module imports cleanly on Ubuntu (no top-level Windows
-     API calls outside guarded code).
-  2. Stub the subprocess/WMI boundary so the public scan() function runs
-     end-to-end without touching the host, and emits a well-formed list.
+  1. Verify each module imports cleanly. CI runs on windows-latest so
+     the winreg-importing scanners (ads/browser/credential) are
+     exercised for real; on a non-Windows host the WINDOWS_ONLY_SCANNERS
+     tests pytest.skip cleanly so the suite still runs locally on
+     Linux/macOS for the cross-platform modules.
+  2. Stub the subprocess/WMI boundary so each public scan() / check_*()
+     entry point runs end-to-end without touching the host, and emits a
+     well-formed list/dict.
 
 Together they catch import-time regressions, schema drift in the
-findings dicts, and crashes in error paths — without needing a Windows
-runner for every PR.
+findings dicts, and crashes in error paths.
 """
 
 from __future__ import annotations
@@ -150,12 +153,13 @@ def test_wdefender_scan_returns_list():
 
 
 @pytest.mark.skipif(not _IS_WINDOWS, reason="ads_scanner needs winreg")
-def test_ads_scanner_on_empty_directory(tmp_path):
+def test_ads_scanner_smoke_runs():
+    """scan_ads() takes no args — it walks a fixed set of well-known
+    directories (Downloads, Temp, startup folder). Just assert it
+    returns a list/dict without raising."""
     import ads_scanner
 
-    entrypoints = [n for n in dir(ads_scanner) if n.startswith("scan_")]
-    fn = getattr(ads_scanner, entrypoints[0])
-    result = fn(str(tmp_path))
+    result = ads_scanner.scan_ads()
     assert isinstance(result, (list, dict))
 
 

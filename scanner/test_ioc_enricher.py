@@ -70,8 +70,17 @@ def test_query_malware_bazaar_handles_ok_response():
 
 
 def test_query_malware_bazaar_returns_none_without_key():
-    """Without an API key configured, abuse.ch is unreachable — degrade silently."""
-    with patch.object(ioc_enricher, "_load_api_key", return_value=""):
+    """Without an API key the function gets a 401 / no-data response from
+    abuse.ch and returns None. We patch `requests` so the test never hits
+    the real network — abuse.ch may rate-limit unauthenticated calls and
+    the CI runner shouldn't make outbound traffic to it regardless."""
+    fake_resp = MagicMock()
+    fake_resp.status_code = 401
+    fake_resp.json.return_value = {"query_status": "unauthorized"}
+    with patch.object(ioc_enricher, "_load_api_key", return_value=""), patch.object(
+        ioc_enricher, "requests"
+    ) as m_req:
+        m_req.post.return_value = fake_resp
         result = ioc_enricher.query_malware_bazaar("a" * 64)
     assert result is None
 
