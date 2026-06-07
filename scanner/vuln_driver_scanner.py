@@ -1,19 +1,20 @@
 """
 Vulnerable / known-malicious driver scanner.
 
-Cross-references currently loaded kernel drivers against Microsoft's
-recommended driver blocklist (the same data that drives Windows
-Defender's "Vulnerable Driver Blocklist"). Catches the BYOVD ("Bring
-Your Own Vulnerable Driver") attack pattern — an attacker side-loading
-a signed-but-vulnerable driver to escalate privileges or disable EDR.
+Cross-references currently loaded kernel drivers against the LOLDrivers
+community catalog (https://www.loldrivers.io/), a superset of Microsoft's
+recommended blocklist plus community-submitted BYOVD samples. Catches the
+BYOVD ("Bring Your Own Vulnerable Driver") attack pattern — an attacker
+side-loading a signed-but-vulnerable driver to escalate privileges or
+disable EDR.
 
-Feed source: https://aka.ms/VulnerableDriverBlockList
-The blocklist is a SiPolicy.p7b binary, but Microsoft also publishes
-the parsed FileRules (and their SHA256/Authenticode hashes) in
-driver-block-list.xml inside the bundle. We read that XML.
+Feed source: https://www.loldrivers.io/api/drivers.json
+The JSON is an array of driver entries; each entry's KnownVulnerableSamples
+list carries the SHA256 / SHA1 / MD5 of each known-bad binary. We index
+the SHA256s into a {hash: friendly_name} map.
 
 The scanner:
-1. Loads the parsed blocklist into a {sha256: rule_name} map.
+1. Loads the parsed catalog into a {sha256: rule_name} map.
 2. Enumerates loaded kernel drivers via Win32_SystemDriver +
    Authenticode hash extraction.
 3. Reports any match as CRITICAL.
@@ -26,9 +27,9 @@ this check produced no data.
 from __future__ import annotations
 
 import hashlib
+import json
 import platform
 import subprocess
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -36,54 +37,65 @@ from feed_store import FEED_VULN_DRIVERS, feed_path, get_feed_status
 
 
 def _load_blocklist() -> Dict[str, str]:
-    """Parses Microsoft's driver-block-list.xml into {sha256_hex: rule_name}.
+    """Parses the LOLDrivers JSON catalog into {sha256_hex: rule_name}.
 
-    The XML schema (SiPolicy) puts hashes inside FileRules/Deny elements.
-    We extract the Hash attribute, normalise to lowercase hex, and key by
-    that. Authenticode SHA256 and file SHA256 are both present in the
-    bundle; we accept both and merge.
+    LOLDrivers shape (per entry):
+      { "Tags": [...],
+        "KnownVulnerableSamples": [
+          { "Filename": "x.sys",
+            "SHA256": "...",
+            "SHA1": "...",
+            "MD5": "...",
+            "Authentihash": { "SHA256": "...", ... } } ] }
+
+    We harvest SHA256 from both top-level samples and the Authentihash
+    object (Authenticode hash — what Get-AuthenticodeSignature returns),
+    normalise to lowercase hex, and key by that. The friendly name is the
+    first Tag if present, falling back to the sample's Filename.
     """
-    xml_path = feed_path(FEED_VULN_DRIVERS, "driver_blocklist.xml")
-    if not xml_path.exists():
+    json_path = feed_path(FEED_VULN_DRIVERS, "loldrivers.json")
+    if not json_path.exists():
         return {}
 
     try:
-        tree = ET.parse(xml_path)
-    except (ET.ParseError, OSError):
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
         return {}
 
-    root = tree.getroot()
-    # SiPolicy uses an XML namespace; strip it for simpler XPath.
-    namespaces = {
-        "": "urn:schemas-microsoft-com:sipolicy",
-    }
+    if not isinstance(data, list):
+        return {}
 
     out: Dict[str, str] = {}
-
-    # FileRules/Deny[@Hash][@FriendlyName]
-    for deny in root.iter("{urn:schemas-microsoft-com:sipolicy}Deny"):
-        h = deny.get("Hash") or ""
-        name = (
-            deny.get("FriendlyName")
-            or deny.get("ID")
-            or "Microsoft vulnerable driver blocklist"
-        )
-        if not h:
+    for entry in data:
+        if not isinstance(entry, dict):
             continue
-        out[h.lower()] = name
-
-    # Some bundles also use the unprefixed form when namespace fallback hits
-    for deny in root.iter("Deny"):
-        h = deny.get("Hash") or ""
-        if not h:
+        tags = entry.get("Tags") or []
+        tag = str(tags[0]) if isinstance(tags, list) and tags else ""
+        samples = entry.get("KnownVulnerableSamples") or []
+        if not isinstance(samples, list):
             continue
-        out.setdefault(
-            h.lower(),
-            deny.get("FriendlyName") or "Microsoft vulnerable driver blocklist",
-        )
+        for sample in samples:
+            if not isinstance(sample, dict):
+                continue
+            label = tag or str(sample.get("Filename") or "LOLDrivers vulnerable driver")
+            for h in _collect_sha256s(sample):
+                out.setdefault(h.lower(), label)
+    return out
 
-    # Avoid an unused-var warning when running under static analysers
-    _ = namespaces
+
+def _collect_sha256s(sample: dict) -> List[str]:
+    """LOLDrivers carries SHA256 at the sample root AND inside Authentihash;
+    both are useful — file hash matches a binary copy, Authenticode hash
+    matches even when the binary has been re-padded or re-timestamped."""
+    out: List[str] = []
+    top = sample.get("SHA256")
+    if isinstance(top, str) and top:
+        out.append(top)
+    auth = sample.get("Authentihash")
+    if isinstance(auth, dict):
+        a = auth.get("SHA256")
+        if isinstance(a, str) and a:
+            out.append(a)
     return out
 
 
@@ -192,7 +204,7 @@ def scan() -> List[Dict]:
         # vuln-driver coverage is empty: the feed file isn't on disk yet.
         status = get_feed_status(FEED_VULN_DRIVERS)
         reason = (
-            "Microsoft vulnerable-driver blocklist not yet downloaded — "
+            "LOLDrivers vulnerable-driver catalog not yet downloaded — "
             "run 'Refresh Threat Feeds' from the WRAITH menu."
         )
         if status and status.error:
