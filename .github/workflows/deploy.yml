@@ -1,11 +1,16 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # WRAITH — Build & Release
 #
-# Trigger : push to main         →  prerelease build (v$NEXT-dev.$RUN, never latest)
-#           push of v*.*.* tag   →  stable release   (latest gated by SemVer compare)
+# Trigger : push to main         →  stable release   (next patch, latest by SemVer)
+#           push of v*.*.* tag   →  stable release   (explicit tag, latest by SemVer)
 #
-# To cut a stable release: bump VERSION on main, wait for the prerelease build to
-# go green, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+# Every push to main publishes a stable release using the next available patch
+# in the major.minor line declared by VERSION. The GitHub server picks Latest
+# by SemVer compare (`make_latest: legacy`), so the wraithsec-site auto-update
+# probe (which calls /releases/latest) always sees the freshest stable within
+# minutes of a merge — no manual tag step required.
+#
+# Tag pushes still work for explicit backports / hotfixes off a non-main branch.
 #
 # Artifact: WRAITH-<version>-win-x64.zip
 #   ├── WRAITH.exe        (self-contained, Windows-branded, .NET runtime + icon
@@ -62,7 +67,6 @@ jobs:
         env:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           git fetch --tags --quiet
 
@@ -82,7 +86,12 @@ jobs:
             Write-Host "Stable release: $v"
           }
           else {
-            # ── Prerelease build path (main push) ─────────────────────────
+            # ── Stable release path (main push) ───────────────────────────
+            # Every merge to main publishes a stable release; the patch
+            # number is auto-incremented from the highest existing tag in
+            # the major.minor line declared by VERSION. The site fetches
+            # /releases/latest, so this keeps "newest stable" tracking
+            # main without requiring a manual `git tag` step per merge.
             $raw = (Get-Content VERSION -Raw).Trim()
             $parts = $raw.Split('.')
             if ($parts.Count -lt 2 -or $parts.Count -gt 3) {
@@ -92,8 +101,7 @@ jobs:
             $minor = [int]$parts[1]
             $seedPatch = if ($parts.Count -eq 3) { [int]$parts[2] } else { 0 }
 
-            # Next patch in this major.minor — only stable tags count,
-            # prereleases (v*-dev.N) must not influence the patch number.
+            # Next patch in this major.minor — only stable tags count.
             $maxPatch = -1
             foreach ($t in (git tag -l "v${major}.${minor}.*" 2>$null)) {
               if ($t -match "^v(\d+)\.(\d+)\.(\d+)$" -and [int]$Matches[1] -eq $major -and [int]$Matches[2] -eq $minor) {
@@ -104,10 +112,11 @@ jobs:
             $patch       = [Math]::Max($seedPatch, $maxPatch + 1)
             $nextStable  = [version]"$major.$minor.$patch"
 
-            # Stale-VERSION guard against the highest existing stable tag.
-            # Prevents the foot-gun where VERSION lags behind the latest
-            # stable release — without this guard a main push could ship
-            # a prerelease that, once promoted, would downgrade users.
+            # Stale-VERSION guard. If VERSION lags behind the highest
+            # existing stable tag (e.g. operator forgot to bump after a
+            # backport bumped the previous minor), the build aborts with
+            # instructions instead of publishing a release the SemVer
+            # comparer would reject as latest.
             $maxTag = $null
             foreach ($t in (git tag -l "v*" 2>$null)) {
               if ($t -match '^v(\d+\.\d+\.\d+)$') {
@@ -124,27 +133,23 @@ jobs:
               # the message as an array + -join instead.
               $msg = @(
                 "VERSION file is stale."
-                "  Would build prerelease for:   v$nextStable"
-                "  Highest existing stable tag:  v$maxTag"
+                "  Would build stable release for: v$nextStable"
+                "  Highest existing stable tag:    v$maxTag"
                 ""
                 "Bump VERSION to '$suggested' (or higher) and push again."
               ) -join [Environment]::NewLine
               throw $msg
             }
 
-            # Prereleases carry the run number so multiple main pushes for
-            # the same upcoming stable version don't collide on the same tag.
-            $v           = "v$nextStable-dev.$($env:RUN_NUMBER)"
-            $packVer     = "$nextStable-dev.$($env:RUN_NUMBER)"
-            # AssemblyVersion is the 4-part numeric and can't carry -dev.N.
-            # Velopack's portable-mode fallback compares this against the
-            # latest .nupkg version, so it must reflect the next-stable
-            # target — not the previous stable, or the popup will fire
-            # forever for portable users on the prior release.
+            $v           = "v$nextStable"
+            $packVer     = "$nextStable"
             $assemblyVer = "$nextStable.0"
-            $prerelease  = 'true'
-            $makeLatest  = 'false'
-            Write-Host "Prerelease build: $v (next stable would be v$nextStable)"
+            $prerelease  = 'false'
+            # 'legacy' = GitHub server picks Latest by SemVer compare, so
+            # this release becomes Latest iff its version beats every other
+            # tag. Backports off older branches won't demote a newer main.
+            $makeLatest  = 'legacy'
+            Write-Host "Stable release (main push): $v"
           }
 
           # NOTE: the tag is deliberately NOT pushed here. softprops/action-gh-release
