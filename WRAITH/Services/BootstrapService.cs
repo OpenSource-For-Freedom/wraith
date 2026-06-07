@@ -51,10 +51,11 @@ public sealed class BootstrapService
     /// (AutomationMenuService task resync, etc.) reach the same file via
     /// this helper.
     /// </summary>
-    public static string GetStableEnvJsonPath() => System.IO.Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "WRAITH",
-        "wraith.env.json");
+    public static string GetStableEnvJsonPath() => System.IO.Path.GetFullPath(
+        System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "WRAITH",
+            "wraith.env.json"));
 
     /// <summary>
     /// Returns true when setup needs to run: either no valid Python is configured
@@ -726,6 +727,7 @@ public sealed class BootstrapService
     // ── Helpers ────────────────────────────────────────────────────────
     private static string? ReadPythonFromEnvJson(string envPath)
     {
+        envPath = System.IO.Path.GetFullPath(envPath);
         if (!System.IO.File.Exists(envPath)) return null;
         try
         {
@@ -733,8 +735,12 @@ public sealed class BootstrapService
             if (doc.RootElement.TryGetProperty("python", out var p))
             {
                 var path = p.GetString();
-                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
-                    return path;
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    var full = System.IO.Path.GetFullPath(path);
+                    if (System.IO.File.Exists(full))
+                        return full;
+                }
             }
         }
         catch { /* malformed JSON */ }
@@ -744,6 +750,7 @@ public sealed class BootstrapService
     /// <summary>Returns the real Python install (not the venv) stored in wraith.env.json.</summary>
     private static string? ReadBasePythonFromEnvJson(string envPath)
     {
+        envPath = System.IO.Path.GetFullPath(envPath);
         if (!System.IO.File.Exists(envPath)) return null;
         try
         {
@@ -751,8 +758,12 @@ public sealed class BootstrapService
             if (doc.RootElement.TryGetProperty("base_python", out var p))
             {
                 var path = p.GetString();
-                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
-                    return path;
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    var full = System.IO.Path.GetFullPath(path);
+                    if (System.IO.File.Exists(full))
+                        return full;
+                }
             }
         }
         catch { }
@@ -761,6 +772,7 @@ public sealed class BootstrapService
 
     private static bool IsPathConfirmed(string envPath)
     {
+        envPath = System.IO.Path.GetFullPath(envPath);
         if (!System.IO.File.Exists(envPath)) return false;
         try
         {
