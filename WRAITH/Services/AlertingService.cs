@@ -1,10 +1,41 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using WRAITH.Models;
 
 namespace WRAITH.Services;
+
+// ── Discord payload DTOs ────────────────────────────────────────────────────────────────
+// Concrete types so System.Text.Json serializes the full structure correctly.
+// Anonymous types inside object[] lose their type at runtime and serialize as {}.
+
+internal sealed record DiscordField(
+    [property: JsonPropertyName("name")]   string Name,
+    [property: JsonPropertyName("value")]  string Value,
+    [property: JsonPropertyName("inline")] bool   Inline
+);
+
+internal sealed record DiscordFooter(
+    [property: JsonPropertyName("text")]     string Text,
+    [property: JsonPropertyName("icon_url")] string IconUrl
+);
+
+internal sealed record DiscordEmbed(
+    [property: JsonPropertyName("title")]       string        Title,
+    [property: JsonPropertyName("color")]       int           Color,
+    [property: JsonPropertyName("description")] string        Description,
+    [property: JsonPropertyName("fields")]      DiscordField[] Fields,
+    [property: JsonPropertyName("footer")]      DiscordFooter  Footer,
+    [property: JsonPropertyName("timestamp")]   string        Timestamp
+);
+
+internal sealed record DiscordPayload(
+    [property: JsonPropertyName("username")]   string        Username,
+    [property: JsonPropertyName("avatar_url")] string        AvatarUrl,
+    [property: JsonPropertyName("embeds")]     DiscordEmbed[] Embeds
+);
+// ─────────────────────────────────────────────────────────────────────────────────────────
 
 public sealed class AlertingService
 {
@@ -85,43 +116,34 @@ public sealed class AlertingService
             $"**Risk Index:** {impact.RiskIndex}/100  ·  **Confidence:** {impact.ConfidencePercent}%\n\n" +
             Trim(impact.RecommendedActions, 350);
 
-        // Use JsonObject/JsonArray — System.Text.Json cannot serialize anonymous
-        // types stored in object[] at runtime (produces {} for each element).
-        var fields = new JsonArray
-        {
-            DiscordField("Critical", $"**{result.Summary.Critical}**", inline: true),
-            DiscordField("High",     $"**{result.Summary.High}**",     inline: true),
-            DiscordField("Medium",   $"**{result.Summary.Medium}**",   inline: true),
-            DiscordField("Low",      $"**{result.Summary.Low}**",      inline: true),
-            DiscordField("Info",     $"**{result.Summary.Info}**",     inline: true),
-            DiscordField("\u200b",   "\u200b",                         inline: true),
-            DiscordField("Alert Matrix",                    Trim(summaryTable,  1024), inline: false),
-            DiscordField("Top Findings (Critical / High)", Trim(findingsList,  1024), inline: false),
-            DiscordField("Response Summary",               Trim(responseSummary, 1024), inline: false),
-        };
+        var embed = new DiscordEmbed(
+            Title:       $"THREAT LEVEL: {level}",
+            Color:       color,
+            Description: $"Threat hunt completed on **{Trim(scanPath, 80)}** at **{result.Timestamp:yyyy-MM-dd HH:mm}**",
+            Fields: new[]
+            {
+                new DiscordField("Critical", $"**{result.Summary.Critical}**", Inline: true),
+                new DiscordField("High",     $"**{result.Summary.High}**",     Inline: true),
+                new DiscordField("Medium",   $"**{result.Summary.Medium}**",   Inline: true),
+                new DiscordField("Low",      $"**{result.Summary.Low}**",      Inline: true),
+                new DiscordField("Info",     $"**{result.Summary.Info}**",     Inline: true),
+                new DiscordField("\u200b",   "\u200b",                         Inline: true),
+                new DiscordField("Alert Matrix",                    Trim(summaryTable,    1024), Inline: false),
+                new DiscordField("Top Findings (Critical / High)",  Trim(findingsList,   1024), Inline: false),
+                new DiscordField("Response Summary",                Trim(responseSummary, 1024), Inline: false),
+            },
+            Footer:    new DiscordFooter(Footer, AvatarUrl),
+            Timestamp: ts
+        );
 
-        var embed = new JsonObject
-        {
-            ["title"]       = $"THREAT LEVEL: {level}",
-            ["color"]       = color,
-            ["description"] = $"Threat hunt completed on **{Trim(scanPath, 80)}** at **{result.Timestamp:yyyy-MM-dd HH:mm}**",
-            ["fields"]      = fields,
-            ["footer"]      = new JsonObject { ["text"] = Footer, ["icon_url"] = AvatarUrl },
-            ["timestamp"]   = ts,
-        };
+        var payload = new DiscordPayload(
+            Username:  "WRAITH",
+            AvatarUrl: AvatarUrl,
+            Embeds:    new[] { embed }
+        );
 
-        var payload = new JsonObject
-        {
-            ["username"]   = "WRAITH",
-            ["avatar_url"] = AvatarUrl,
-            ["embeds"]     = new JsonArray { embed },
-        };
-
-        return payload.ToJsonString();
+        return JsonSerializer.Serialize(payload);
     }
-
-    private static JsonObject DiscordField(string name, string value, bool inline) =>
-        new() { ["name"] = name, ["value"] = value, ["inline"] = inline };
 
     // ── Slack — Block Kit ───────────────────────────────────────────────────────
 
