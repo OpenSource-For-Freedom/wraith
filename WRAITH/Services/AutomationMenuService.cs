@@ -199,7 +199,7 @@ public sealed class AutomationMenuService
 
     public async Task<(bool ok, string output)> SetTimedScanAsync(int intervalMinutes, string scanPath)
     {
-        var script = Path.Combine(AutomationDir, "Register-WraithTimedScan.ps1");
+        var script = Path.GetFullPath(Path.Combine(AutomationDir, "Register-WraithTimedScan.ps1"));
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
@@ -219,7 +219,7 @@ public sealed class AutomationMenuService
 
     public async Task<(bool ok, string output)> DisableTimedScanAsync()
     {
-        var script = Path.Combine(AutomationDir, "Unregister-WraithTimedScan.ps1");
+        var script = Path.GetFullPath(Path.Combine(AutomationDir, "Unregister-WraithTimedScan.ps1"));
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
@@ -231,7 +231,7 @@ public sealed class AutomationMenuService
 
     public async Task<(bool ok, string output)> EnablePersistenceListenerAsync(string scanPath)
     {
-        var script = Path.Combine(AutomationDir, "Register-WraithPersistenceListener.ps1");
+        var script = Path.GetFullPath(Path.Combine(AutomationDir, "Register-WraithPersistenceListener.ps1"));
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
@@ -248,7 +248,7 @@ public sealed class AutomationMenuService
 
     public async Task<(bool ok, string output)> DisablePersistenceListenerAsync()
     {
-        var script = Path.Combine(AutomationDir, "Unregister-WraithPersistenceListener.ps1");
+        var script = Path.GetFullPath(Path.Combine(AutomationDir, "Unregister-WraithPersistenceListener.ps1"));
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
