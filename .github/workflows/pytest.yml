@@ -5,11 +5,8 @@ on:
     paths:
       - 'scanner/**'
       - '.github/workflows/pytest.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'scanner/**'
-      - '.github/workflows/pytest.yml'
+# Main-push coverage is handled inline by deploy.yml — running the same
+# suite here too would be redundant and would race with the deploy job.
 
 permissions:
   contents: read
@@ -17,18 +14,21 @@ permissions:
 jobs:
   pytest:
     name: scanner unit tests
-    runs-on: ubuntu-latest
+    # WRAITH is a Windows app — the scanners call PowerShell, winreg, and
+    # pywin32. Running tests on a Windows runner means the platform-conditional
+    # skips activate as REAL tests instead of being silently skipped on Ubuntu.
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install pytest
-        run: pip install --no-input pytest
+      - name: Install test deps
+        # 'requests' is a runtime dep of ioc_enricher / cisa_kev_scanner.
+        # pywin32 is needed on Windows runners so the Windows-only scanners
+        # can be imported and exercised.
+        run: pip install --no-input pytest requests pywin32
       - name: Run tests
-        # The scanner package itself doesn't need its full Windows-only
-        # requirements (pywin32, yara-python) — the test suites for the
-        # threat-intel feeds are pure-Python and mock subprocess calls.
         working-directory: scanner
-        run: pytest test_feed_store.py test_vuln_driver_scanner.py test_tor_check.py test_digitalside_intel.py -v
+        run: pytest -v
