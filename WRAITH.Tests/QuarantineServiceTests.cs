@@ -8,11 +8,10 @@ namespace WRAITH.Tests;
 
 /// <summary>
 /// Tests for <see cref="QuarantineService"/>'s file, directory, and registry
-/// containment paths. Filesystem tests run against a temp vault dir
-/// overridden through reflection on _vaultDir / _indexFile. Registry-touching
-/// tests would only run on Windows; none are included in this fixture yet
-/// since the Win32 registry isn't reachable from the cross-platform runner
-/// the test project builds against.
+/// path-shape detection plus the vault lifecycle (move / restore / delete /
+/// state transitions). The test project targets <c>net8.0-windows</c> so the
+/// fixture is Windows-only at build/run time; registry-touching scenarios
+/// aren't covered here yet but the registry-path **detection** is.
 /// </summary>
 public sealed class QuarantineServiceTests : IDisposable
 {
@@ -21,14 +20,11 @@ public sealed class QuarantineServiceTests : IDisposable
 
     public QuarantineServiceTests()
     {
-        // Path.GetFullPath normalises the temp path and serves as the
-        // CodeQL sanitiser for the cs/path-injection rule, which treats
-        // GetTempPath()-derived paths as untrusted at the rule level.
         _tempRoot = Path.GetFullPath(Path.Combine(
             Path.GetTempPath(), "wraith-tests-" + Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(_tempRoot);
         _svc = new QuarantineService();
-        OverrideVault(_svc, Path.GetFullPath(Path.Combine(_tempRoot, "vault")));
+        OverrideVault(_svc, TempChild("vault"));
     }
 
     public void Dispose()
@@ -36,12 +32,21 @@ public sealed class QuarantineServiceTests : IDisposable
         try { Directory.Delete(_tempRoot, recursive: true); } catch { }
     }
 
-    /// <summary>QuarantineService picks up its vault path from a private field.
-    /// Tests need to redirect it to a temp dir; reflection is the least-bad option.</summary>
+    /// <summary>
+    /// Constructs a normalised child path under <see cref="_tempRoot"/>.
+    /// Path.GetFullPath at every test-side leaf serves as the CodeQL
+    /// sanitiser for cs/path-injection — without it the rule re-evaluates
+    /// _tempRoot at every File.* / Directory.* call site.
+    /// </summary>
+    private string TempChild(params string[] segments)
+    {
+        var combined = _tempRoot;
+        foreach (var s in segments) combined = Path.Combine(combined, s);
+        return Path.GetFullPath(combined);
+    }
+
     private static void OverrideVault(QuarantineService svc, string newRoot)
     {
-        // Normalise newRoot the same way the production code does so CodeQL
-        // sees a sanitised value before File.* / Directory.* sinks.
         newRoot = Path.GetFullPath(newRoot);
         Directory.CreateDirectory(newRoot);
         var t = typeof(QuarantineService);
@@ -92,7 +97,7 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void QuarantineFile_moves_file_into_vault()
     {
-        var src = Path.Combine(_tempRoot, "malware.exe");
+        var src = TempChild("malware.exe");
         File.WriteAllText(src, "dummy malware bytes");
 
         var rec = _svc.QuarantineFile(src, "test", "HIGH");
@@ -111,7 +116,7 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void QuarantineFile_records_appear_in_GetRecords()
     {
-        var src = Path.Combine(_tempRoot, "x.exe");
+        var src = TempChild("x.exe");
         File.WriteAllText(src, "x");
         var rec = _svc.QuarantineFile(src, "test");
         Assert.Contains(_svc.GetRecords(), r => r.Id == rec.Id);
@@ -121,7 +126,7 @@ public sealed class QuarantineServiceTests : IDisposable
     public void QuarantineFile_missing_source_throws()
     {
         Assert.Throws<FileNotFoundException>(() =>
-            _svc.QuarantineFile(Path.Combine(_tempRoot, "nope.exe"), "test"));
+            _svc.QuarantineFile(TempChild("nope.exe"), "test"));
     }
 
     [Fact]
@@ -135,10 +140,10 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void QuarantineFile_zips_directory_source()
     {
-        var srcDir = Path.Combine(_tempRoot, "EvilExtension");
+        var srcDir = TempChild("EvilExtension");
         Directory.CreateDirectory(srcDir);
-        File.WriteAllText(Path.Combine(srcDir, "manifest.json"), "{}");
-        File.WriteAllText(Path.Combine(srcDir, "background.js"), "evil();");
+        File.WriteAllText(Path.GetFullPath(Path.Combine(srcDir, "manifest.json")), "{}");
+        File.WriteAllText(Path.GetFullPath(Path.Combine(srcDir, "background.js")), "evil();");
 
         var rec = _svc.QuarantineFile(srcDir, "Chrome extension");
 
@@ -157,7 +162,7 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void Restore_returns_file_to_original_location()
     {
-        var src = Path.Combine(_tempRoot, "doc.txt");
+        var src = TempChild("doc.txt");
         File.WriteAllText(src, "important");
         var rec = _svc.QuarantineFile(src, "test");
 
@@ -182,7 +187,7 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void DeleteFromVault_removes_vault_file_and_flags_record()
     {
-        var src = Path.Combine(_tempRoot, "evil.bin");
+        var src = TempChild("evil.bin");
         File.WriteAllText(src, "evil");
         var rec = _svc.QuarantineFile(src, "test");
 
@@ -198,7 +203,7 @@ public sealed class QuarantineServiceTests : IDisposable
     [Fact]
     public void DeleteFromVault_after_restore_is_noop()
     {
-        var src = Path.Combine(_tempRoot, "x.bin");
+        var src = TempChild("x.bin");
         File.WriteAllText(src, "x");
         var rec = _svc.QuarantineFile(src, "test");
         _svc.Restore(rec.Id, out _);

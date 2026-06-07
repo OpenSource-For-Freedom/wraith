@@ -153,14 +153,59 @@ def test_wdefender_scan_returns_list():
 
 
 @pytest.mark.skipif(not _IS_WINDOWS, reason="ads_scanner needs winreg")
-def test_ads_scanner_smoke_runs():
-    """scan_ads() takes no args — it walks a fixed set of well-known
-    directories (Downloads, Temp, startup folder). Just assert it
-    returns a list/dict without raising."""
+def test_ads_scanner_aggregates_check_results():
+    """scan_ads() iterates over its internal check_* functions and
+    extends a List[Dict]. Stub every check so the unit test stays
+    deterministic — the real scan walks user/system directories and
+    invokes PowerShell, which would make this slow + flaky."""
     import ads_scanner
 
-    result = ads_scanner.scan_ads()
-    assert isinstance(result, (list, dict))
+    stub_finding = {
+        "title": "stub",
+        "path": "",
+        "reason": "stub",
+        "severity": "INFO",
+        "category": "ads",
+        "subcategory": "stub",
+    }
+    with patch.object(
+        ads_scanner, "check_ads_in_hot_dirs", return_value=[stub_finding]
+    ), patch.object(
+        ads_scanner, "check_system32_zone_id", return_value=[]
+    ), patch.object(
+        ads_scanner, "check_directory_ads", return_value=[]
+    ), patch.object(
+        ads_scanner, "check_recently_modified_sys_binaries", return_value=[]
+    ), patch.object(
+        ads_scanner, "check_pe_in_ads", return_value=[stub_finding]
+    ):
+        result = ads_scanner.scan_ads()
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+
+
+@pytest.mark.skipif(not _IS_WINDOWS, reason="ads_scanner needs winreg")
+def test_ads_scanner_swallows_check_exceptions():
+    """A single failing internal check must not abort the others —
+    scan_ads wraps each in try/except and continues."""
+    import ads_scanner
+
+    with patch.object(
+        ads_scanner, "check_ads_in_hot_dirs", side_effect=RuntimeError("boom")
+    ), patch.object(
+        ads_scanner, "check_system32_zone_id", return_value=[{"title": "ok"}]
+    ), patch.object(
+        ads_scanner, "check_directory_ads", return_value=[]
+    ), patch.object(
+        ads_scanner, "check_recently_modified_sys_binaries", return_value=[]
+    ), patch.object(
+        ads_scanner, "check_pe_in_ads", return_value=[]
+    ):
+        result = ads_scanner.scan_ads()
+
+    assert isinstance(result, list)
+    assert result == [{"title": "ok"}]
 
 
 # ── network_scanner ────────────────────────────────────────────────────
