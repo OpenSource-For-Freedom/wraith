@@ -342,7 +342,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         "All", "Persistence", "Yara", "Heuristics", "Events", "Npm", "Processes",
         "Network", "WinSec", "Rootkit", "ADS", "Browser", "Defender", "Credential", "KEV",
-        "NativeScan"
+        "VulnAssess", "NativeScan"
     };
 
     public List<string> LiveFilterOptions { get; } = new()
@@ -539,6 +539,64 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IsReady = true;
     }
 
+    // ── Feed auto-refresh ─────────────────────────────────────────────
+    /// <summary>
+    /// Called at the start of every scan.  If any feed file is missing from disk
+    /// the refresh runs synchronously (blocks the scan start) so the scanners have
+    /// data on the very first run.  If all feeds exist but any are older than 24 h
+    /// the refresh runs in the background so the scan is not delayed.
+    /// </summary>
+    private async Task EnsureFeedsAsync(CancellationToken ct)
+    {
+        bool anyMissing = FeedRefreshService.Sources.Any(s =>
+            !System.IO.File.Exists(
+                System.IO.Path.Combine(FeedRefreshService.FeedsRoot, s.LocalRelativePath)));
+
+        if (anyMissing)
+        {
+            AppendLog("[FEEDS] First run — downloading threat intel feeds (this takes ~30 s)...");
+            CurrentPhase = "Updating threat intel feeds...";
+            try
+            {
+                await new FeedRefreshService().RefreshAllAsync(ct);
+                AppendLog("[FEEDS] Feed download complete.");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { AppendLog($"[WARN] Feed download partially failed: {ex.Message}"); }
+            return;
+        }
+
+        // Check if any existing feed is older than 24 h
+        var manifest = FeedRefreshService.LoadManifest();
+        bool anyStale = FeedRefreshService.Sources.Any(s =>
+        {
+            if (!manifest.TryGetValue(s.Id, out var status)) return true;
+            if (status.LastRefreshUtc == null) return true;
+            if (!DateTime.TryParse(status.LastRefreshUtc, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var ts)) return true;
+            return (DateTime.UtcNow - ts).TotalHours > 24;
+        });
+
+        if (anyStale)
+        {
+            AppendLog("[FEEDS] Threat intel feeds are stale — refreshing in background...");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await new FeedRefreshService().RefreshAllAsync();
+                    App.Current.Dispatcher.Invoke(() =>
+                        AppendLog("[FEEDS] Background feed refresh complete."));
+                }
+                catch (Exception ex)
+                {
+                    App.Current.Dispatcher.Invoke(() =>
+                        AppendLog($"[WARN] Background feed refresh: {ex.Message}"));
+                }
+            });
+        }
+    }
+
     // ── Scan execution ────────────────────────────────────────────────
     private async Task RunScanAsync()
     {
@@ -560,13 +618,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _orchestrator.LogMessage        += msg => { lock (_logLock) _pendingLogs.Add(msg); };
         _orchestrator.FindingDiscovered += f   => _pendingFindings.Enqueue(f);
 
+        // Auto-update feeds: download any that have never been fetched before the scan
+        // runs; refresh stale ones quietly in the background so the scan starts immediately.
+        await EnsureFeedsAsync(_cts.Token);
+
         var phases = new[]
         {
             "Persistence Check","YARA Scan","Heuristic Scan",
             "Event Log Scan","npm Supply Chain","Process Scan",
             "Network Scan","Windows Security","Rootkit Detection",
             "ADS Scanner","Browser Integrity","Defender Integration",
-            "Credential Audit","CISA KEV Check","Native File Scan"
+            "Credential Audit","CISA KEV Check","Vulnerable Drivers",
+            "Tor Exit Nodes","DigitalSide Intel","Vuln Assessment","Native File Scan"
         };
         int step = 0;
 
@@ -595,17 +658,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 AppendLog($"[WARN] SOAR actions: {responseReport.ActionsTaken} (killed={responseReport.ProcessesKilled}, quarantined={responseReport.FilesQuarantined})");
 
             var policy = _autoResponse.LoadPolicy();
+            // Persist current UI webhook values to the policy file and enable flags
+            // so they survive across restarts and are always active during scans.
+            bool policyDirty = false;
+            if (!string.IsNullOrWhiteSpace(SlackWebhookUrl))
+            {
+                policy.SlackWebhookUrl    = SlackWebhookUrl.Trim();
+                policy.EnableSlackWebhook = true;
+                policy.SlackNotifyOnHigh  = SlackNotifyOnHigh;
+                policyDirty = true;
+            }
+            if (!string.IsNullOrWhiteSpace(DiscordWebhookUrl))
+            {
+                policy.DiscordWebhookUrl    = DiscordWebhookUrl.Trim();
+                policy.EnableDiscordWebhook = true;
+                policy.DiscordNotifyOnHigh  = DiscordNotifyOnHigh;
+                policyDirty = true;
+            }
+            if (policyDirty) _autoResponse.SavePolicy(policy);
+
             var (sent, slackMsg) = await _alerting.SendSlackAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
             if (sent)
                 AppendLog("[DONE] Slack alert delivered.");
             else
-                AppendLog($"[TRACE] Slack: {slackMsg}");
+                AppendLog($"[WARN] Slack: {slackMsg}");
 
             var (discordSent, discordMsg) = await _alerting.SendDiscordAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
             if (discordSent)
                 AppendLog("[DONE] Discord alert delivered.");
             else
-                AppendLog($"[TRACE] Discord: {discordMsg}");
+                AppendLog($"[WARN] Discord: {discordMsg}");
 
             var lvl = result.Summary.ThreatLevel;
             ThreatLevel  = lvl;
@@ -1553,6 +1635,10 @@ $result | ConvertTo-Json -Depth 8 -Compress
         if (p.Contains("defender")) return "Defender Integration";
         if (p.Contains("credential")) return "Credential Exposure Audit";
         if (p.Contains("kev")) return "CISA KEV Correlation";
+        if (p.Contains("vuln")) return "Local Vulnerability Assessment";
+        if (p.Contains("driver")) return "Vulnerable Driver Detection";
+        if (p.Contains("tor")) return "Tor Exit Node Correlation";
+        if (p.Contains("intel") || p.Contains("digitalside")) return "Threat Intel Feed Correlation";
         if (p.Contains("native")) return "Native File Scanner";
         if (p.Contains("complete")) return "Scan Finalization";
         return phase;

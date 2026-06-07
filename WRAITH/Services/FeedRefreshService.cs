@@ -96,6 +96,52 @@ public sealed class FeedRefreshService
             SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestmd5.txt",
             LocalRelativePath: "digitalside/hashes_md5.txt",
             Description:       "DigitalSide OSINT malware MD5 hashes."),
+
+        // ── abuse.ch feeds ──────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "urlhaus",
+            DisplayName:       "URLhaus malicious URLs",
+            SourceUrl:         "https://urlhaus.abuse.ch/downloads/text/",
+            LocalRelativePath: "urlhaus/urls.txt",
+            Description:       "abuse.ch URLhaus — active malicious URLs (no API key)."),
+
+        new FeedSource(
+            Id:                "feodo",
+            DisplayName:       "Feodo botnet C2 IPs",
+            SourceUrl:         "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+            LocalRelativePath: "feodo/c2_ips.txt",
+            Description:       "abuse.ch Feodo Tracker — active botnet C2 IPs (no API key)."),
+
+        // ── Community aggregated IPs ─────────────────────────────────────────
+        new FeedSource(
+            Id:                "ipsum",
+            DisplayName:       "IPsum aggregated bad IPs",
+            SourceUrl:         "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt",
+            LocalRelativePath: "ipsum/ips.txt",
+            Description:       "IPsum — IPs seen across 30+ block lists (score ≥ 3 threshold applied at scan time)."),
+
+        new FeedSource(
+            Id:                "et_compromised",
+            DisplayName:       "EmergingThreats compromised hosts",
+            SourceUrl:         "https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
+            LocalRelativePath: "et/compromised_ips.txt",
+            Description:       "EmergingThreats — compromised/rooted hosts (no API key)."),
+
+        // ── Phishing ─────────────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "openphish",
+            DisplayName:       "OpenPhish phishing URLs",
+            SourceUrl:         "https://openphish.com/feed.txt",
+            LocalRelativePath: "openphish/urls.txt",
+            Description:       "OpenPhish — active phishing URLs (no API key, free tier)."),
+
+        // ── Malicious domains ─────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "botvrij_domains",
+            DisplayName:       "Botvrij.eu malicious domains",
+            SourceUrl:         "https://www.botvrij.eu/data/ioclist.domain.raw",
+            LocalRelativePath: "botvrij/domains.txt",
+            Description:       "Botvrij.eu — community-curated malicious domain IOCs (no API key)."),
     };
 
     // DigitalSide + LOLDrivers (and most CDN-fronted feeds) return 403 to

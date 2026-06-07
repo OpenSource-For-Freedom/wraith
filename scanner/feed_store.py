@@ -162,6 +162,12 @@ FEED_VULN_DRIVERS = "vuln_drivers"
 FEED_TOR = "tor"
 FEED_DIGITALSIDE = "digitalside"
 FEED_SIGMA = "sigma"
+FEED_URLHAUS = "urlhaus"
+FEED_FEODO = "feodo"
+FEED_IPSUM = "ipsum"
+FEED_ET_COMPROMISED = "et_compromised"
+FEED_OPENPHISH = "openphish"
+FEED_BOTVRIJ = "botvrij_domains"
 
 
 def _public_api() -> list[str]:
@@ -177,6 +183,12 @@ def _public_api() -> list[str]:
         "FEED_TOR",
         "FEED_DIGITALSIDE",
         "FEED_SIGMA",
+        "FEED_URLHAUS",
+        "FEED_FEODO",
+        "FEED_IPSUM",
+        "FEED_ET_COMPROMISED",
+        "FEED_OPENPHISH",
+        "FEED_BOTVRIJ",
     ]
 
 

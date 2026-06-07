@@ -379,6 +379,7 @@ public class ScanOrchestrator
             ("Vulnerable Drivers",   () => RunPythonScanAsync("vuln_drivers", scanPath, eventHours, ct)),
             ("Tor Exit Nodes",       () => RunPythonScanAsync("tor",          scanPath, eventHours, ct)),
             ("DigitalSide Intel",    () => RunPythonScanAsync("intel",        scanPath, eventHours, ct)),
+            ("Vuln Assessment",      () => RunPythonScanAsync("vuln_assess",  scanPath, eventHours, ct)),
             ("Native File Scan",     () => RunNativeScanAsync(scanPath, ct: ct)),
         };
 
