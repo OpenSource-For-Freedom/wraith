@@ -15,6 +15,11 @@
 # Artifact: WRAITH-<version>-win-x64.zip
 #   ├── WRAITH.exe        (self-contained, Windows-branded, .NET runtime + icon
 #   │                      + version stamped, single executable — no SDK needed)
+#   ├── scanner/          (Python scan engine — required by every Python-backed
+#   │                      scan path; BootstrapService.ResolveBaseDir() joins
+#   │                      "scanner" to the EXE dir at runtime)
+#   ├── automation/       (PowerShell scripts the tray-menu Register-Wraith*
+#   │                      tasks invoke; missing → menu actions silently no-op)
 #   └── README.md
 # ═══════════════════════════════════════════════════════════════════════════════
 name: Deploy
@@ -307,13 +312,27 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path ./release -Force | Out-Null
 
-          # ZIP ships ONLY the Windows-branded WRAITH.exe and the README.
-          # Everything else (scanner/, automation/, etc.) is embedded in
-          # the EXE via the csproj Content includes or surfaced through
-          # the in-app feed-refresh flow — the user should never see
-          # raw repo contents in the release archive.
+          # ZIP ships the runtime payload the app needs to function: the
+          # signed Windows EXE plus the scanner/ and automation/ directories
+          # that BootstrapService + AutomationMenuService look for next to
+          # the EXE. The Content includes in WRAITH.csproj copy them into
+          # ./publish — `CopyToOutputDirectory` puts them ALONGSIDE the
+          # single-file binary, NOT inside it; the single-file bundler only
+          # ingests managed assemblies and native libs, so without this
+          # copy step every Python-backed scan fails with
+          # "Python scanner not found at <extract-dir>\scanner\scanner.py".
+          #
+          # Excluded from the archive: START.bat, quick-scan.ps1,
+          # wraith.env.json, LICENSE, the repo's CI/test files. The user
+          # double-clicks WRAITH.exe and the bootstrap handles the rest.
           Copy-Item ./publish/WRAITH.exe ./release/WRAITH.exe
           Copy-Item ./README.md          ./release/README.md
+
+          # Pull from ./publish so the same Exclude pattern that keeps
+          # test_*.py and __pycache__ out of csproj output keeps them out
+          # of the ZIP too — no duplicate filter to drift.
+          if (Test-Path ./publish/scanner)    { Copy-Item -Recurse ./publish/scanner    ./release/scanner }
+          if (Test-Path ./publish/automation) { Copy-Item -Recurse ./publish/automation ./release/automation }
 
       - name: Generate Python scanner SBOM
         uses: anchore/sbom-action@v0
