@@ -658,31 +658,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 AppendLog($"[WARN] SOAR actions: {responseReport.ActionsTaken} (killed={responseReport.ProcessesKilled}, quarantined={responseReport.FilesQuarantined})");
 
             var policy = _autoResponse.LoadPolicy();
-            // Overlay current UI values so webhooks fire even if the user never
-            // clicked Save — the text box contents are the source of truth.
+            // Persist current UI webhook values to the policy file and enable flags
+            // so they survive across restarts and are always active during scans.
+            bool policyDirty = false;
             if (!string.IsNullOrWhiteSpace(SlackWebhookUrl))
             {
                 policy.SlackWebhookUrl    = SlackWebhookUrl.Trim();
                 policy.EnableSlackWebhook = true;
                 policy.SlackNotifyOnHigh  = SlackNotifyOnHigh;
+                policyDirty = true;
             }
             if (!string.IsNullOrWhiteSpace(DiscordWebhookUrl))
             {
                 policy.DiscordWebhookUrl    = DiscordWebhookUrl.Trim();
                 policy.EnableDiscordWebhook = true;
                 policy.DiscordNotifyOnHigh  = DiscordNotifyOnHigh;
+                policyDirty = true;
             }
+            if (policyDirty) _autoResponse.SavePolicy(policy);
+
             var (sent, slackMsg) = await _alerting.SendSlackAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
             if (sent)
                 AppendLog("[DONE] Slack alert delivered.");
             else
-                AppendLog($"[TRACE] Slack: {slackMsg}");
+                AppendLog($"[WARN] Slack: {slackMsg}");
 
             var (discordSent, discordMsg) = await _alerting.SendDiscordAlertAsync(result, responseReport, ScanPath, policy, _cts.Token);
             if (discordSent)
                 AppendLog("[DONE] Discord alert delivered.");
             else
-                AppendLog($"[TRACE] Discord: {discordMsg}");
+                AppendLog($"[WARN] Discord: {discordMsg}");
 
             var lvl = result.Summary.ThreatLevel;
             ThreatLevel  = lvl;

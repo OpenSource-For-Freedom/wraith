@@ -517,25 +517,26 @@ public sealed class AlertingService
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linked.CancelAfter(TimeSpan.FromSeconds(12));
+            linked.CancelAfter(TimeSpan.FromSeconds(15));
 
             using var res = await _http.SendAsync(req, linked.Token);
             if (!res.IsSuccessStatusCode)
             {
                 var body = await res.Content.ReadAsStringAsync(CancellationToken.None);
-                var detail = string.IsNullOrWhiteSpace(body) ? string.Empty : $" — {body}";
-                return (false, $"{channelName} post failed with HTTP {(int)res.StatusCode}{detail}");
+                // Truncate body — Discord error responses can be verbose
+                var detail = string.IsNullOrWhiteSpace(body) ? string.Empty : $" — {body[..Math.Min(300, body.Length)]}";
+                return (false, $"{channelName} HTTP {(int)res.StatusCode}{detail}");
             }
 
             return (true, $"{channelName} alert sent");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return (false, $"{channelName} post timed out after 12 s");
+            return (false, $"{channelName} POST timed out after 15 s");
         }
         catch (Exception ex)
         {
-            return (false, $"{channelName} post failed: {ex.Message}");
+            return (false, $"{channelName} POST failed: {ex.Message}");
         }
     }
 }
