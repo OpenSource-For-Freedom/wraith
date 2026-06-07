@@ -416,6 +416,68 @@ jobs:
           $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
           Write-Host "Created ${zip}  (${size} MB)"
 
+      # ── Portable-ZIP smoke test ───────────────────────────────────────────
+      # Catches the regression that broke v1.0.65-dev.87: the staging step
+      # produced a ZIP that omitted scanner/ + automation/, so end users
+      # extracted and ran WRAITH.exe → every Python-backed scan failed with
+      # "Python scanner not found at <extract-dir>\scanner\scanner.py" because
+      # BootstrapService.ResolveBaseDir() joins "scanner" to the EXE dir.
+      #
+      # Unpack the ACTUAL produced ZIP (not ./release) so the test also
+      # catches Compress-Archive weirdness, then assert each runtime
+      # dependency exists. Also assert the "junk" exclusions PR #36 made
+      # are still excluded — regressions in the other direction matter too.
+      - name: Verify portable ZIP contents
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.ver.outputs.zip }}"
+          $unpack = Join-Path $env:RUNNER_TEMP "zip-verify"
+          if (Test-Path $unpack) { Remove-Item -Recurse -Force $unpack }
+          Expand-Archive -Path $zip -DestinationPath $unpack -Force
+
+          $required = @(
+            "WRAITH.exe",
+            "README.md",
+            "scanner/scanner.py",                                # Bootstrap entry
+            "automation/Register-WraithTimedScan.ps1",           # Tray: auto scan
+            "automation/Register-WraithPersistenceListener.ps1"  # Tray: persistence
+          )
+          $forbidden = @(
+            "START.bat",            # PR #36 removed — must not come back
+            "quick-scan.ps1",       # PR #36 removed
+            "wraith.env.json",      # bootstrap creates fresh per install
+            "LICENSE",              # repo metadata, not runtime
+            "scanner/test_heuristics.py",
+            "scanner/__pycache__"
+          )
+
+          $missing = @()
+          foreach ($f in $required) {
+            $p = Join-Path $unpack $f
+            if (-not (Test-Path $p)) { $missing += $f }
+          }
+          $leaked = @()
+          foreach ($f in $forbidden) {
+            $p = Join-Path $unpack $f
+            if (Test-Path $p) { $leaked += $f }
+          }
+
+          Write-Host "ZIP contents (top level):"
+          Get-ChildItem $unpack | Select-Object Mode, Length, Name | Format-Table | Out-String | Write-Host
+
+          if ($missing.Count -gt 0 -or $leaked.Count -gt 0) {
+            if ($missing.Count -gt 0) {
+              Write-Host "::error::Portable ZIP is missing required files:"
+              $missing | ForEach-Object { Write-Host "::error::  - $_" }
+            }
+            if ($leaked.Count -gt 0) {
+              Write-Host "::error::Portable ZIP contains files that should be excluded:"
+              $leaked | ForEach-Object { Write-Host "::error::  - $_" }
+            }
+            throw "Portable ZIP smoke test failed — refusing to publish a broken release."
+          }
+          Write-Host "Portable ZIP smoke test passed."
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
