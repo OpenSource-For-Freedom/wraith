@@ -46,13 +46,36 @@ public sealed class BootstrapService
     public bool ForcePathPrompt { get; set; }
 
     /// <summary>
+    /// Stable location for wraith.env.json, outside the per-version install
+    /// directory so Velopack updates don't strand it. Other code paths
+    /// (AutomationMenuService task resync, etc.) reach the same file via
+    /// this helper.
+    /// </summary>
+    public static string GetStableEnvJsonPath() => System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+        "WRAITH",
+        "wraith.env.json");
+
+    /// <summary>
     /// Returns true when setup needs to run: either no valid Python is configured
     /// yet, or the user has not yet confirmed the PATH step.
     /// </summary>
     public static bool IsFirstRun(string baseDir)
     {
-        var envPath = System.IO.Path.Combine(baseDir, "wraith.env.json");
-        return ReadPythonFromEnvJson(envPath) == null || !IsPathConfirmed(envPath);
+        // Migrate any legacy install-dir copy into the stable location so a
+        // user updating across this change isn't forced through setup again.
+        var stable = GetStableEnvJsonPath();
+        var legacy = System.IO.Path.Combine(baseDir, "wraith.env.json");
+        if (!System.IO.File.Exists(stable) && System.IO.File.Exists(legacy))
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(stable)!);
+                System.IO.File.Copy(legacy, stable);
+            }
+            catch { /* fall through — slow path will recreate as needed */ }
+        }
+        return ReadPythonFromEnvJson(stable) == null || !IsPathConfirmed(stable);
     }
 
     private static readonly string _diagLog = System.IO.Path.Combine(
@@ -93,7 +116,19 @@ public sealed class BootstrapService
         ReportStep(0, SetupStepStatus.Done, osDesc);
 
         // ── Fast path: wraith.env.json already points at a valid Python ──
-        var envPath   = System.IO.Path.Combine(baseDir, "wraith.env.json");
+        // env.json lives at a stable ProgramData path now, not next to the EXE,
+        // so Velopack updates (which change the install dir on every version
+        // bump) don't strand it. Migrate any legacy install-dir copy on first
+        // run after this change.
+        var envPath = GetStableEnvJsonPath();
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(envPath)!);
+        var legacyEnvPath = System.IO.Path.Combine(baseDir, "wraith.env.json");
+        if (!System.IO.File.Exists(envPath) && System.IO.File.Exists(legacyEnvPath))
+        {
+            try { System.IO.File.Copy(legacyEnvPath, envPath); }
+            catch (Exception ex) { Log($"env.json migration: {ex.Message}"); }
+        }
+
         var quickPath = ReadPythonFromEnvJson(envPath);
         if (quickPath != null)
         {
@@ -220,23 +255,12 @@ public sealed class BootstrapService
                 ["abuse_ch_api_key"] = ""
             };
 
-            if (System.IO.File.Exists(envPath))
-            {
-                try
-                {
-                    using var existing = JsonDocument.Parse(System.IO.File.ReadAllText(envPath));
-                    foreach (var prop in existing.RootElement.EnumerateObject())
-                        if (!config.ContainsKey(prop.Name) && prop.Value.ValueKind == JsonValueKind.String)
-                            config[prop.Name] = prop.Value.GetString() ?? "";
-                }
-                catch { /* ignore parse errors */ }
-            }
+            // Preserve every existing property (including non-string ones — tray
+            // menu prefs like auto_scan_minutes and persistence_enabled) so the
+            // slow path doesn't reset user state on Velopack updates.
+            WriteEnvJsonPreservingExtras(envPath, config);
 
-            System.IO.File.WriteAllText(envPath,
-                JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
-
-            // Re-stamp path_confirmed — the base WriteAllText above uses string dict and
-            // drops boolean flags.  WritePathConfirmed merges it back correctly.
+            // Re-stamp path_confirmed separately since the dict above is strings only.
             WritePathConfirmed(envPath);
         }
         catch (Exception ex)
@@ -735,24 +759,65 @@ public sealed class BootstrapService
 
     private static void WritePathConfirmed(string envPath)
     {
+        // Single string update on top of whatever's already there — preserve
+        // everything else, including numbers and booleans from the tray menu
+        // preferences. The previous string-only merge silently dropped them.
+        var updates = new Dictionary<string, string> { ["path_confirmed"] = "true" };
+        WriteEnvJsonPreservingExtras(envPath, updates, ["path_confirmed"]);
+    }
+
+    /// <summary>
+    /// Merges <paramref name="stringUpdates"/> into the env.json at
+    /// <paramref name="envPath"/>, preserving every existing property
+    /// (regardless of JSON type) that isn't being overwritten. Keys in
+    /// <paramref name="rawBooleanKeys"/> get serialized as raw JSON
+    /// booleans rather than quoted strings.
+    /// </summary>
+    private static void WriteEnvJsonPreservingExtras(
+        string envPath,
+        Dictionary<string, string> stringUpdates,
+        IReadOnlySet<string>? rawBooleanKeys = null)
+    {
         try
         {
-            var config = new Dictionary<string, object> { ["path_confirmed"] = true };
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(envPath)!);
+
+            var preserved = new Dictionary<string, JsonElement>();
             if (System.IO.File.Exists(envPath))
             {
                 try
                 {
                     using var existing = JsonDocument.Parse(System.IO.File.ReadAllText(envPath));
                     foreach (var prop in existing.RootElement.EnumerateObject())
-                        if (prop.Value.ValueKind == JsonValueKind.String)
-                            config[prop.Name] = prop.Value.GetString() ?? "";
+                        if (!stringUpdates.ContainsKey(prop.Name))
+                            preserved[prop.Name] = prop.Value.Clone();
                 }
-                catch { }
+                catch { /* fall through — corrupted file gets overwritten */ }
             }
-            System.IO.File.WriteAllText(envPath,
-                JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true }));
+
+            using var ms = new System.IO.MemoryStream();
+            using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
+            {
+                w.WriteStartObject();
+                foreach (var kv in stringUpdates)
+                {
+                    w.WritePropertyName(kv.Key);
+                    if (rawBooleanKeys?.Contains(kv.Key) == true &&
+                        bool.TryParse(kv.Value, out var b))
+                        w.WriteBooleanValue(b);
+                    else
+                        w.WriteStringValue(kv.Value);
+                }
+                foreach (var kv in preserved)
+                {
+                    w.WritePropertyName(kv.Key);
+                    kv.Value.WriteTo(w);
+                }
+                w.WriteEndObject();
+            }
+            System.IO.File.WriteAllBytes(envPath, ms.ToArray());
         }
-        catch { }
+        catch { /* best-effort — caller already in a fallback context */ }
     }
 
     /// <summary>Runs a process, captures exit code and stderr.</summary>
