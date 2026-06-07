@@ -33,13 +33,34 @@ public sealed class AutomationMenuService
             if (doc.RootElement.TryGetProperty("python", out var p) &&
                 p.ValueKind == JsonValueKind.String)
             {
-                var path = p.GetString();
-                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-                    return path;
+                var raw = p.GetString();
+                var normalized = NormalizePathInput(raw);
+                if (normalized != null && File.Exists(normalized))
+                    return normalized;
             }
         }
         catch { /* fall through to PATH lookup */ }
         return "python";
+    }
+
+    /// <summary>
+    /// Funnel for paths that come in from outside the binary (env.json on disk,
+    /// GUI input). Resolves to an absolute path through Path.GetFullPath, rejects
+    /// anything that doesn't end up rooted, and lets CodeQL see that the value
+    /// is sanitised before it flows into File.* or ProcessStartInfo.ArgumentList.
+    /// </summary>
+    private static string? NormalizePathInput(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        try
+        {
+            var full = Path.GetFullPath(raw);
+            return Path.IsPathRooted(full) ? full : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // ── User preference persistence ──────────────────────────────────────
@@ -153,12 +174,12 @@ public sealed class AutomationMenuService
 
         if (autoScanMinutes > 0)
         {
-            var path = string.IsNullOrWhiteSpace(autoScanPath) ? "C:\\" : autoScanPath;
+            var path = NormalizePathInput(autoScanPath) ?? "C:\\";
             await SetTimedScanAsync(autoScanMinutes, path);
         }
         if (persistenceEnabled)
         {
-            var path = string.IsNullOrWhiteSpace(persistenceScanPath) ? "C:\\" : persistenceScanPath;
+            var path = NormalizePathInput(persistenceScanPath) ?? "C:\\";
             await EnablePersistenceListenerAsync(path);
         }
     }

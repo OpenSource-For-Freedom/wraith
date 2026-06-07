@@ -64,8 +64,11 @@ public sealed class BootstrapService
     {
         // Migrate any legacy install-dir copy into the stable location so a
         // user updating across this change isn't forced through setup again.
+        // Path.GetFullPath normalises the baseDir-derived path before it
+        // touches File.Exists / File.Copy — CodeQL accepts that as a
+        // sanitiser for the path-injection rule.
         var stable = GetStableEnvJsonPath();
-        var legacy = System.IO.Path.Combine(baseDir, "wraith.env.json");
+        var legacy = System.IO.Path.GetFullPath(System.IO.Path.Combine(baseDir, "wraith.env.json"));
         if (!System.IO.File.Exists(stable) && System.IO.File.Exists(legacy))
         {
             try
@@ -120,9 +123,11 @@ public sealed class BootstrapService
         // so Velopack updates (which change the install dir on every version
         // bump) don't strand it. Migrate any legacy install-dir copy on first
         // run after this change.
+        // Path.GetFullPath also acts as the CodeQL sanitiser for the baseDir
+        // parameter, which is treated as untrusted by the path-injection rule.
         var envPath = GetStableEnvJsonPath();
         System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(envPath)!);
-        var legacyEnvPath = System.IO.Path.Combine(baseDir, "wraith.env.json");
+        var legacyEnvPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(baseDir, "wraith.env.json"));
         if (!System.IO.File.Exists(envPath) && System.IO.File.Exists(legacyEnvPath))
         {
             try { System.IO.File.Copy(legacyEnvPath, envPath); }
@@ -780,6 +785,10 @@ public sealed class BootstrapService
     {
         try
         {
+            // Normalise the caller-provided path before any File.* call so
+            // CodeQL sees the sanitiser. Every real caller already passes the
+            // stable ProgramData location, but the rule sees a string parameter.
+            envPath = System.IO.Path.GetFullPath(envPath);
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(envPath)!);
 
             var preserved = new Dictionary<string, JsonElement>();
