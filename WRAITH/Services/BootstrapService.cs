@@ -375,7 +375,11 @@ public sealed class BootstrapService
             {
                 foreach (var profile in System.IO.Directory.GetDirectories(usersDir))
                 {
-                    var lad = System.IO.Path.GetFullPath(System.IO.Path.Combine(profile, "AppData", "Local"));
+                    // Per-profile normalisation in its own try so a single
+                    // long/invalid path doesn't abort the whole enumeration.
+                    string lad;
+                    try { lad = System.IO.Path.GetFullPath(System.IO.Path.Combine(profile, "AppData", "Local")); }
+                    catch { continue; }
                     if (!string.Equals(lad, currentLocalAppData, StringComparison.OrdinalIgnoreCase)
                         && System.IO.Directory.Exists(lad))
                         localAppDataDirs.Add(lad);
@@ -401,7 +405,11 @@ public sealed class BootstrapService
 
         foreach (var rawPath in candidates)
         {
-            var path = System.IO.Path.GetFullPath(rawPath);
+            // Per-candidate try so an overlong / malformed entry doesn't
+            // abort the whole search and crash EnsureDependenciesAsync.
+            string path;
+            try { path = System.IO.Path.GetFullPath(rawPath); }
+            catch { continue; }
             var exists = System.IO.File.Exists(path);
             if (!exists) continue;
             DiagLog($"[FindPython] exists=True {path}");
@@ -643,8 +651,11 @@ public sealed class BootstrapService
             if (System.IO.Directory.Exists(usersRoot))
             {
                 foreach (var profile in System.IO.Directory.GetDirectories(usersRoot))
-                    candidates.Add(System.IO.Path.GetFullPath(
-                        System.IO.Path.Combine(profile, "AppData", "Local", "Microsoft", "WindowsApps", "winget.exe")));
+                    // Raw combined path — the Select(...) below normalises per
+                    // entry inside a try, so doing it here too would just be a
+                    // second chance to throw and bail the whole enumeration.
+                    candidates.Add(System.IO.Path.Combine(
+                        profile, "AppData", "Local", "Microsoft", "WindowsApps", "winget.exe"));
             }
         }
         catch { }
