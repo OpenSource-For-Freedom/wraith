@@ -396,6 +396,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand TraceOriginCommand { get; }
     public ICommand RestartToUpdateCommand { get; }
     public ICommand OpenQuarantineCommand { get; }
+    public ICommand OpenFeedsCommand { get; }
     public ICommand SaveSlackWebhookCommand { get; }
     public ICommand TestSlackWebhookCommand { get; }
     public ICommand SaveDiscordWebhookCommand { get; }
@@ -444,6 +445,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         TraceOriginCommand = new AsyncRelayCommand<ThreatFinding>(
             f => TraceOriginAsync(f ?? _selectedFinding));
         OpenQuarantineCommand = new RelayCommand(_ => OpenQuarantineWindow(), _ => !IsScanning);
+        OpenFeedsCommand      = new RelayCommand(_ => OpenFeedsWindow());
         SaveSlackWebhookCommand = new RelayCommand(_ => SaveSlackPolicy(), _ => !IsScanning);
         TestSlackWebhookCommand = new AsyncRelayCommand(TestSlackWebhookAsync, () => !IsScanning);
         SaveDiscordWebhookCommand = new RelayCommand(_ => SaveDiscordPolicy(), _ => !IsScanning);
@@ -812,6 +814,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OpenQuarantineWindow()
     {
         var win = new QuarantineWindow
+        {
+            Owner = Application.Current.MainWindow
+        };
+        win.ShowDialog();
+    }
+
+    private void OpenFeedsWindow()
+    {
+        var win = new FeedsWindow
         {
             Owner = Application.Current.MainWindow
         };

@@ -1,0 +1,102 @@
+<Window x:Class="WRAITH.FeedsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WRAITH — Threat Intel Feeds"
+        Width="780" Height="520"
+        Background="#0a0a0f"
+        Foreground="#d9d9d9"
+        FontFamily="Segoe UI"
+        FontSize="12"
+        WindowStartupLocation="CenterOwner">
+  <Window.Resources>
+    <Style x:Key="GhostButton" TargetType="Button">
+      <Setter Property="Background" Value="#1a1a22"/>
+      <Setter Property="Foreground" Value="#d9d9d9"/>
+      <Setter Property="BorderBrush" Value="#2a2a35"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="14,7"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#22222d"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header -->
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="Threat Intel Feeds"
+                 FontSize="18" FontWeight="Bold" Foreground="#e0c878"/>
+      <TextBlock TextWrapping="Wrap" Margin="0,4,0,0"
+                 Foreground="#9a9aa5">
+        Local OSS threat-intel sources downloaded to %ProgramData%\WRAITH\feeds\.
+        No API key required. Scanners read these files at scan time — refresh
+        nightly or before a major scan.
+      </TextBlock>
+    </StackPanel>
+
+    <!-- Top-bar actions -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,14,0,8">
+      <Button x:Name="RefreshAllBtn"
+              Content="↻  Refresh all feeds"
+              Style="{StaticResource GhostButton}"
+              Click="RefreshAll_Click"/>
+      <TextBlock x:Name="StatusLine"
+                 VerticalAlignment="Center"
+                 Margin="14,0,0,0"
+                 Foreground="#9a9aa5"/>
+    </StackPanel>
+
+    <!-- Feed list -->
+    <DataGrid x:Name="FeedsGrid" Grid.Row="2"
+              AutoGenerateColumns="False"
+              HeadersVisibility="Column"
+              GridLinesVisibility="None"
+              Background="#101018"
+              RowBackground="#101018"
+              AlternatingRowBackground="#14141d"
+              BorderBrush="#2a2a35"
+              BorderThickness="1"
+              Foreground="#d9d9d9"
+              IsReadOnly="True"
+              SelectionMode="Single"
+              CanUserAddRows="False"
+              CanUserDeleteRows="False"
+              CanUserReorderColumns="False"
+              CanUserResizeRows="False">
+      <DataGrid.ColumnHeaderStyle>
+        <Style TargetType="DataGridColumnHeader">
+          <Setter Property="Background" Value="#1a1a22"/>
+          <Setter Property="Foreground" Value="#e0c878"/>
+          <Setter Property="FontWeight" Value="Bold"/>
+          <Setter Property="Padding" Value="8,6"/>
+          <Setter Property="BorderBrush" Value="#2a2a35"/>
+          <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+      </DataGrid.ColumnHeaderStyle>
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Feed" Binding="{Binding DisplayName}" Width="*"/>
+        <DataGridTextColumn Header="Status" Binding="{Binding StatusLabel}" Width="110"/>
+        <DataGridTextColumn Header="Last refresh (UTC)" Binding="{Binding LastRefreshLabel}" Width="160"/>
+        <DataGridTextColumn Header="Size" Binding="{Binding SizeLabel}" Width="80"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <!-- Footer -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+      <Button Content="Close"
+              Style="{StaticResource GhostButton}"
+              Click="Close_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

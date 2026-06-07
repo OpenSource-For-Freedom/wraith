@@ -616,6 +616,55 @@ def scan_kev_module() -> List[Dict]:
         return []
 
 
+# ── Mode: vuln_drivers ────────────────────────────────────────────────────
+# Microsoft's recommended driver blocklist vs currently loaded drivers —
+# catches the BYOVD attack pattern. Feed lives under
+# %ProgramData%\WRAITH\feeds\vuln_drivers\ and is refreshed by the C#
+# FeedRefreshService.
+def scan_vuln_drivers_module() -> List[Dict]:
+    try:
+        import vuln_driver_scanner
+
+        return vuln_driver_scanner.scan()
+    except ImportError:
+        log("vuln_driver_scanner module missing")
+        return []
+    except Exception as e:
+        log(f"Vulnerable driver scan error: {e}")
+        return []
+
+
+# ── Mode: tor ─────────────────────────────────────────────────────────────
+# Active outbound connections correlated against the Tor exit-node list.
+def scan_tor_module() -> List[Dict]:
+    try:
+        import tor_check
+
+        return tor_check.scan()
+    except ImportError:
+        log("tor_check module missing")
+        return []
+    except Exception as e:
+        log(f"Tor exit-node scan error: {e}")
+        return []
+
+
+# ── Mode: intel ───────────────────────────────────────────────────────────
+# DigitalSide OSINT feeds (IPs, domains, hashes) correlated with active
+# connections, DNS cache, and hosts file.
+def scan_intel_module() -> List[Dict]:
+    try:
+        import digitalside_intel
+
+        return digitalside_intel.scan()
+    except ImportError:
+        log("digitalside_intel module missing")
+        return []
+    except Exception as e:
+        log(f"DigitalSide intel scan error: {e}")
+        return []
+
+
 # ── Entry point ───────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="WRAITH Scanner")
@@ -672,6 +721,12 @@ def main():
             findings = scan_credential_module()
         elif mode == "kev":
             findings = scan_kev_module()
+        elif mode == "vuln_drivers":
+            findings = scan_vuln_drivers_module()
+        elif mode == "tor":
+            findings = scan_tor_module()
+        elif mode == "intel":
+            findings = scan_intel_module()
         elif mode == "all":
             findings += scan_persistence(scan_path)
             findings += scan_yara(scan_path, rules_dir)
@@ -687,6 +742,9 @@ def main():
             findings += scan_defender_module()
             findings += scan_credential_module()
             findings += scan_kev_module()
+            findings += scan_vuln_drivers_module()
+            findings += scan_tor_module()
+            findings += scan_intel_module()
         else:
             error = f"Unknown mode: {mode}"
     except Exception as e:

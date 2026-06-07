@@ -250,6 +250,13 @@ public partial class MainWindow : Window
                     vm.OpenQuarantineCommand.Execute(null);
             }));
 
+            var feeds = new System.Windows.Forms.ToolStripMenuItem("Threat Intel Feeds");
+            feeds.Click += (_, _) => Dispatcher.Invoke(() =>
+            {
+                if (DataContext is MainViewModel vm)
+                    vm.OpenFeedsCommand.Execute(null);
+            });
+
             var quitItem = new System.Windows.Forms.ToolStripMenuItem("Quit");
             HookGuarded(quitItem, "Quit", () => Dispatcher.Invoke(Close));
 
@@ -257,6 +264,7 @@ public partial class MainWindow : Window
             menu.Items.Add(autoScan);
             menu.Items.Add(persistence);
             menu.Items.Add(quarantine);
+            menu.Items.Add(feeds);
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add(quitItem);
 
