@@ -465,7 +465,10 @@ public sealed class QuarantineService
 
                 // ExtractToDirectory recreates the included base folder inside targetDir,
                 // so we extract into the parent and let the zip place the leaf folder.
-                ZipFile.ExtractToDirectory(quarantinedPath, targetDir);
+                // Validate every entry's resolved destination stays under targetDir
+                // before writing — defends against zip-slip even though the archive
+                // is one we created ourselves (defence in depth, also satisfies CodeQL).
+                ExtractZipSafely(quarantinedPath, targetDir);
 
                 // The above places the leaf at originalPath. If we need the
                 // _restored_ suffix because originalPath already existed,
@@ -582,6 +585,41 @@ public sealed class QuarantineService
         using var sha = SHA256.Create();
         var hash = sha.ComputeHash(stream);
         return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
+    /// Extracts a zip into <paramref name="destDir"/> after validating every
+    /// entry's resolved destination is under <paramref name="destDir"/>. Defends
+    /// against zip-slip — an archive containing entries like '../../etc/passwd'
+    /// that would otherwise write outside the extract root.
+    /// </summary>
+    private static void ExtractZipSafely(string zipPath, string destDir)
+    {
+        var destFull = Path.GetFullPath(destDir);
+        var destPrefix = destFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                       + Path.DirectorySeparatorChar;
+
+        using var archive = ZipFile.OpenRead(zipPath);
+        foreach (var entry in archive.Entries)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(destFull, entry.FullName));
+            if (!fullPath.StartsWith(destPrefix, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(fullPath, destFull, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Zip entry '{entry.FullName}' resolves outside the extract root.");
+            }
+
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                // Directory entry.
+                Directory.CreateDirectory(fullPath);
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            entry.ExtractToFile(fullPath, overwrite: true);
+        }
     }
 
     private static void CopyWithSharedAccess(string source, string dest)

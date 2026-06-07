@@ -170,8 +170,15 @@ public sealed class AutomationMenuService
             return (false, $"Missing script: {script}");
 
         var pythonPath = ResolvePythonPath();
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -IntervalMinutes {intervalMinutes} -ScanPath \"{scanPath}\" -Hours 24 -Mode all -RunAsSystem -PythonPath \"{pythonPath}\" -ScannerDir \"{ScannerDir}\"";
-        var result = await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+            "-IntervalMinutes", intervalMinutes.ToString(),
+            "-ScanPath", scanPath,
+            "-Hours", "24",
+            "-Mode", "all",
+            "-RunAsSystem",
+            "-PythonPath", pythonPath,
+            "-ScannerDir", ScannerDir);
         if (result.ok) WriteAutoScanPreference(intervalMinutes, scanPath);
         return result;
     }
@@ -182,8 +189,8 @@ public sealed class AutomationMenuService
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
-        var result = await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script);
         if (result.ok) ClearAutoScanPreference();
         return result;
     }
@@ -195,8 +202,12 @@ public sealed class AutomationMenuService
             return (false, $"Missing script: {script}");
 
         var pythonPath = ResolvePythonPath();
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\" -ScanPath \"{scanPath}\" -PollSeconds 120 -PythonPath \"{pythonPath}\" -ScannerDir \"{ScannerDir}\"";
-        var result = await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
+            "-ScanPath", scanPath,
+            "-PollSeconds", "120",
+            "-PythonPath", pythonPath,
+            "-ScannerDir", ScannerDir);
         if (result.ok) WritePersistencePreference(true, scanPath);
         return result;
     }
@@ -207,23 +218,28 @@ public sealed class AutomationMenuService
         if (!File.Exists(script))
             return (false, $"Missing script: {script}");
 
-        var args = $"-NoProfile -ExecutionPolicy Bypass -File \"{script}\"";
-        var result = await RunPowerShellAsync(args);
+        var result = await RunPowerShellAsync(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script);
         if (result.ok) ClearPersistencePreference();
         return result;
     }
 
-    private static async Task<(bool ok, string output)> RunPowerShellAsync(string args)
+    // Per-argument list rather than a single string so .NET escapes each value
+    // independently. The previous string-interpolation form let any quote or
+    // shell metacharacter in a path read from env.json (or in scanPath) become
+    // an injection point — CodeQL flagged every call site as command injection.
+    private static async Task<(bool ok, string output)> RunPowerShellAsync(params string[] args)
     {
         try
         {
-            var psi = new ProcessStartInfo("powershell.exe", args)
+            var psi = new ProcessStartInfo("powershell.exe")
             {
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
+            foreach (var a in args) psi.ArgumentList.Add(a);
 
             using var proc = Process.Start(psi);
             if (proc == null) return (false, "Failed to start powershell.exe");
