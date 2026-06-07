@@ -115,9 +115,32 @@ public sealed class FeedRefreshService
     /// don't abort the rest — a flaky Tor mirror shouldn't block the
     /// DigitalSide pulls.
     /// </summary>
+    /// <summary>
+    /// Normalises a path and validates it sits under the feeds root.
+    /// The StartsWith containment check is what CodeQL's cs/path-injection
+    /// rule recognises as a sanitiser; Path.GetFullPath alone normalises but
+    /// doesn't gate. Throws if the resolved path escapes the root — at every
+    /// call this only happens for a logic bug, not for user input.
+    /// </summary>
+    private static string GatedFeedPath(string candidate)
+    {
+        var root = Path.GetFullPath(FeedsRoot);
+        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        var full = Path.GetFullPath(candidate);
+        if (!full.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(full, root, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Resolved path '{full}' escapes feeds root '{root}'.");
+        }
+        return full;
+    }
+
     public async Task<Dictionary<string, FeedStatus>> RefreshAllAsync(CancellationToken ct = default)
     {
-        Directory.CreateDirectory(Path.GetFullPath(FeedsRoot));
+        Directory.CreateDirectory(GatedFeedPath(FeedsRoot));
         var manifest = LoadManifest();
 
         foreach (var source in Sources)
@@ -142,24 +165,29 @@ public sealed class FeedRefreshService
             Status    = "downloading",
         };
 
-        var destPath = Path.GetFullPath(Path.Combine(FeedsRoot, source.LocalRelativePath));
-        if (!destPath.StartsWith(FeedsRoot, StringComparison.OrdinalIgnoreCase))
+        string destPath;
+        try
+        {
+            // GatedFeedPath: Path.GetFullPath + StartsWith(FeedsRoot) check.
+            // CodeQL recognises the containment check as a cs/path-injection
+            // sanitiser, so every leaf below is now considered cleansed.
+            destPath = GatedFeedPath(Path.Combine(FeedsRoot, source.LocalRelativePath));
+        }
+        catch (InvalidOperationException ex)
         {
             status.Status = "error";
-            status.Error  = "destination outside feeds root";
+            status.Error  = ex.Message;
             return status;
         }
 
         try
         {
-            Directory.CreateDirectory(Path.GetFullPath(Path.GetDirectoryName(destPath)!));
+            Directory.CreateDirectory(GatedFeedPath(Path.GetDirectoryName(destPath)!));
 
             // Stream into a sibling .tmp file, then atomically swap so a crash
             // mid-download doesn't leave a half-written feed that the Python
-            // scanners would happily read. Path.GetFullPath at every File.*
-            // leaf re-satisfies CodeQL's cs/path-injection rule (the rule
-            // doesn't trust a single normalisation at the top of the method).
-            var tmp = Path.GetFullPath(destPath + ".tmp");
+            // scanners would happily read.
+            var tmp = GatedFeedPath(destPath + ".tmp");
 
             using (var resp = await _http.GetAsync(source.SourceUrl,
                                                    HttpCompletionOption.ResponseHeadersRead, ct))
@@ -170,10 +198,10 @@ public sealed class FeedRefreshService
                 await src.CopyToAsync(dst, ct);
             }
 
-            if (File.Exists(Path.GetFullPath(destPath)))
-                File.Replace(tmp, Path.GetFullPath(destPath), destinationBackupFileName: null);
+            if (File.Exists(destPath))
+                File.Replace(tmp, destPath, destinationBackupFileName: null);
             else
-                File.Move(tmp, Path.GetFullPath(destPath));
+                File.Move(tmp, destPath);
 
             var info = new FileInfo(destPath);
             status.SizeBytes      = info.Length;
@@ -193,7 +221,9 @@ public sealed class FeedRefreshService
     /// <summary>Reads manifest.json, returning an empty dict if missing or corrupt.</summary>
     public static Dictionary<string, FeedStatus> LoadManifest()
     {
-        var path = Path.GetFullPath(ManifestPath);
+        string path;
+        try { path = GatedFeedPath(ManifestPath); }
+        catch { return new(); }
         if (!File.Exists(path)) return new();
 
         try
@@ -209,21 +239,23 @@ public sealed class FeedRefreshService
 
     private static void SaveManifest(Dictionary<string, FeedStatus> manifest)
     {
-        var path = Path.GetFullPath(ManifestPath);
+        string path;
+        try { path = GatedFeedPath(ManifestPath); }
+        catch { return; }
         try
         {
-            Directory.CreateDirectory(Path.GetFullPath(Path.GetDirectoryName(path)!));
-            var tmp = Path.GetFullPath(path + ".tmp");
+            Directory.CreateDirectory(GatedFeedPath(Path.GetDirectoryName(path)!));
+            var tmp = GatedFeedPath(path + ".tmp");
             var json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions
             {
                 WriteIndented = true,
                 Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
             });
             File.WriteAllText(tmp, json);
-            if (File.Exists(Path.GetFullPath(path)))
-                File.Replace(tmp, Path.GetFullPath(path), null);
+            if (File.Exists(path))
+                File.Replace(tmp, path, null);
             else
-                File.Move(tmp, Path.GetFullPath(path));
+                File.Move(tmp, path);
         }
         catch
         {
