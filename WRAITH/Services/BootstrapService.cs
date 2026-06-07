@@ -789,7 +789,11 @@ public sealed class BootstrapService
         // everything else, including numbers and booleans from the tray menu
         // preferences. The previous string-only merge silently dropped them.
         var updates = new Dictionary<string, string> { ["path_confirmed"] = "true" };
-        WriteEnvJsonPreservingExtras(envPath, updates, ["path_confirmed"]);
+        // Use HashSet<string> explicitly — collection-expression targeting
+        // IReadOnlySet<string> is rejected by the runner's compiler with
+        // CS9174 ("type is not constructible"). HashSet implements
+        // IReadOnlySet, so the callee signature stays the same.
+        WriteEnvJsonPreservingExtras(envPath, updates, new HashSet<string> { "path_confirmed" });
     }
 
     /// <summary>
