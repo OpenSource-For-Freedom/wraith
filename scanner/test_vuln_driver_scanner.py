@@ -24,7 +24,7 @@ SAMPLE_BLOCKLIST_JSON = [
                 "Filename": "xyz.sys",
                 # Mixed case on purpose — the parser must lowercase.
                 "SHA256": "ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-                "MD5":    "00112233445566778899aabbccddeeff",
+                "MD5": "00112233445566778899aabbccddeeff",
             },
         ],
     },
@@ -33,7 +33,7 @@ SAMPLE_BLOCKLIST_JSON = [
         "KnownVulnerableSamples": [
             {
                 "Filename": "another.sys",
-                "SHA256":   "0011223344556677889900112233445566778899001122334455667788990011",
+                "SHA256": "0011223344556677889900112233445566778899001122334455667788990011",
                 # Authentihash is the Authenticode hash — Get-AuthenticodeSignature
                 # returns this in the real flow, so it must be indexed too.
                 "Authentihash": {
