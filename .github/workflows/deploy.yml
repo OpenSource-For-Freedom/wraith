@@ -653,5 +653,11 @@ jobs:
           print(json.dumps(payload))
           PY
 
+          # Best-effort POST: a transient DNS/network failure here would
+          # otherwise mark the whole notify-discord job (and the workflow
+          # run) as failed under `set -euo pipefail`, even though the
+          # actual release upload already succeeded. Swallow non-zero
+          # exits and log the failure so we have a breadcrumb in the run.
           curl -sS -X POST -H 'Content-Type: application/json' \
-               --data @payload.json "${WEBHOOK}"
+               --data @payload.json "${WEBHOOK}" \
+            || echo "::warning::Discord notification POST failed (transient network or rate limit); release itself was not affected."

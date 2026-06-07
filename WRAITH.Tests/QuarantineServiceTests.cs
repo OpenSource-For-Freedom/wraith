@@ -9,8 +9,10 @@ namespace WRAITH.Tests;
 /// <summary>
 /// Tests for <see cref="QuarantineService"/>'s file, directory, and registry
 /// containment paths. Filesystem tests run against a temp vault dir
-/// overridden through reflection on _vaultDir / _indexFile. Registry tests
-/// only run on Windows — guarded by <see cref="WindowsOnlyFactAttribute"/>.
+/// overridden through reflection on _vaultDir / _indexFile. Registry-touching
+/// tests would only run on Windows; none are included in this fixture yet
+/// since the Win32 registry isn't reachable from the cross-platform runner
+/// the test project builds against.
 /// </summary>
 public sealed class QuarantineServiceTests : IDisposable
 {
@@ -19,10 +21,14 @@ public sealed class QuarantineServiceTests : IDisposable
 
     public QuarantineServiceTests()
     {
-        _tempRoot = Path.Combine(Path.GetTempPath(), "wraith-tests-" + Guid.NewGuid().ToString("N"));
+        // Path.GetFullPath normalises the temp path and serves as the
+        // CodeQL sanitiser for the cs/path-injection rule, which treats
+        // GetTempPath()-derived paths as untrusted at the rule level.
+        _tempRoot = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(), "wraith-tests-" + Guid.NewGuid().ToString("N")));
         Directory.CreateDirectory(_tempRoot);
         _svc = new QuarantineService();
-        OverrideVault(_svc, Path.Combine(_tempRoot, "vault"));
+        OverrideVault(_svc, Path.GetFullPath(Path.Combine(_tempRoot, "vault")));
     }
 
     public void Dispose()
@@ -34,12 +40,15 @@ public sealed class QuarantineServiceTests : IDisposable
     /// Tests need to redirect it to a temp dir; reflection is the least-bad option.</summary>
     private static void OverrideVault(QuarantineService svc, string newRoot)
     {
+        // Normalise newRoot the same way the production code does so CodeQL
+        // sees a sanitised value before File.* / Directory.* sinks.
+        newRoot = Path.GetFullPath(newRoot);
         Directory.CreateDirectory(newRoot);
         var t = typeof(QuarantineService);
         t.GetField("_vaultDir", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .SetValue(svc, newRoot);
         t.GetField("_indexFile", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(svc, Path.Combine(newRoot, "quarantine-index.json"));
+            .SetValue(svc, Path.GetFullPath(Path.Combine(newRoot, "quarantine-index.json")));
     }
 
     // ── Path-shape detection ────────────────────────────────────────────
