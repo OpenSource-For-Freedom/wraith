@@ -34,12 +34,19 @@
   <!-- Resize grip wrapper -->
   <Grid>
 
-    <!-- Outer chrome border -->
-    <Border BorderBrush="#2A1A5A" BorderThickness="1" CornerRadius="8"
+    <!-- Outer chrome border — dark atmospheric glass -->
+    <Border BorderThickness="1" CornerRadius="14"
             Background="{StaticResource BrWindowBackground}">
-    <Border.Effect>
-      <DropShadowEffect Color="#4D2090" BlurRadius="30" ShadowDepth="0" Opacity="0.6"/>
-    </Border.Effect>
+      <Border.BorderBrush>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#80A8C8E8" Offset="0.0"/>
+          <GradientStop Color="#202E1A5E" Offset="0.5"/>
+          <GradientStop Color="#50A8C8E8" Offset="1.0"/>
+        </LinearGradientBrush>
+      </Border.BorderBrush>
+      <Border.Effect>
+        <DropShadowEffect Color="#7B3FE4" BlurRadius="36" ShadowDepth="0" Opacity="0.5"/>
+      </Border.Effect>
     <Grid>
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>       <!-- 0: title bar -->
@@ -51,8 +58,20 @@
       <!-- ══════════════════════════════════════════════════
            ROW 0: Custom title bar / drag strip
            ══════════════════════════════════════════════════ -->
-      <Border Grid.Row="0" Background="#05051A" CornerRadius="8,8,0,0" Height="32"
+      <Border Grid.Row="0" CornerRadius="14,14,0,0" Height="32"
               MouseLeftButtonDown="TitleBar_MouseDown">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#502E1A5E" Offset="0"/>
+            <GradientStop Color="#200F0F2E" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.Background>
+        <Border.BorderBrush>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#60A8C8E8" Offset="0"/>
+            <GradientStop Color="#10A8C8E8" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.BorderBrush>
         <Grid>
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                       HorizontalAlignment="Left" Margin="8,0">
@@ -100,7 +119,20 @@
       <!-- ══════════════════════════════════════════════════
            ROW 1: Header — Patronus spell canvas + title
            ══════════════════════════════════════════════════ -->
-      <Border Grid.Row="1" Background="{StaticResource BrHeaderBackground}" ClipToBounds="True">
+      <Border Grid.Row="1" ClipToBounds="True">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#40A8C8E8" Offset="0.0"/>
+            <GradientStop Color="#180F0F2E" Offset="0.5"/>
+            <GradientStop Color="#280F0F2E" Offset="1.0"/>
+          </LinearGradientBrush>
+        </Border.Background>
+        <Border.BorderBrush>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#50A8C8E8" Offset="0"/>
+            <GradientStop Color="#152E1A5E" Offset="1"/>
+          </LinearGradientBrush>
+        </Border.BorderBrush>
         <!-- Grid lets us layer the scan overlay on top of the patronus canvas -->
         <Grid>
         <!-- Patronus rings + title canvas -->
@@ -155,11 +187,21 @@
           <!-- OS badge — top right -->
           <Border Canvas.Right="0" Canvas.Top="8"
                   Height="26" MinWidth="180"
-                  CornerRadius="4"
-                  Background="#10081E"
+                  CornerRadius="8"
                   BorderThickness="1"
-                  BorderBrush="#2A1A5A"
                   IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#402E1A5E" Offset="0"/>
+                <GradientStop Color="#180F0F2E" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#70A8C8E8" Offset="0"/>
+                <GradientStop Color="#20A8C8E8" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                         VerticalAlignment="Center" Margin="8,0">
               <TextBlock Text="OS  "
@@ -177,12 +219,18 @@
           <Border x:Name="ThreatBadge"
                   Canvas.Right="0" Canvas.Top="38"
                   Width="180" Height="60"
-                  CornerRadius="6"
-                  Background="#16102C"
+                  CornerRadius="10"
                   BorderThickness="1"
                   BorderBrush="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#502E1A5E" Offset="0"/>
+                <GradientStop Color="#280F0F2E" Offset="0.5"/>
+                <GradientStop Color="#381A0D3D" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
             <Border.Effect>
-              <DropShadowEffect Color="#7B3FE4" BlurRadius="12" ShadowDepth="0" Opacity="0.5"/>
+              <DropShadowEffect Color="#7B3FE4" BlurRadius="16" ShadowDepth="0" Opacity="0.6"/>
             </Border.Effect>
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
               <TextBlock Text="THREAT LEVEL" Foreground="{StaticResource BrGoldDim}"

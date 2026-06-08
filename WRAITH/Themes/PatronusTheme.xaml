@@ -1,137 +1,216 @@
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ═══════════════════════════════════════════════
-       WRAITH · Expecto Patronum Colour Palette
-       ═══════════════════════════════════════════════ -->
-  <Color x:Key="ColDeepVoid">#08081A</Color>
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       WRAITH Â· Deathly Hallows â€” Dark Teal / Fog / Gold
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+
+  <!-- Palette -->
+  <Color x:Key="ColVoid">#08081A</Color>
   <Color x:Key="ColAbyss">#0B0B20</Color>
-  <Color x:Key="ColDarkMagic">#0F0F2E</Color>
-  <Color x:Key="ColPurpleShadow">#1A0D3D</Color>
-  <Color x:Key="ColSpellArc">#2E1A5E</Color>
-  <Color x:Key="ColPatronusSilver">#C8D8E8</Color>
-  <Color x:Key="ColPatronusGlow">#A8C8E8</Color>
-  <Color x:Key="ColPatronusCore">#E8F4FF</Color>
-  <Color x:Key="ColGryffindorGold">#D4AF37</Color>
+  <Color x:Key="ColFog">#0F0F2E</Color>
+  <Color x:Key="ColDeepTeal">#1A0D3D</Color>
+  <Color x:Key="ColTeal">#2E1A5E</Color>
+  <Color x:Key="ColTealGlow">#7B3FE4</Color>
+  <Color x:Key="ColMist">#A8C8E8</Color>
+  <Color x:Key="ColGold">#D4AF37</Color>
   <Color x:Key="ColGoldDim">#8B7420</Color>
+  <Color x:Key="ColText">#C8D8E8</Color>
+  <Color x:Key="ColTextBright">#E8F4FF</Color>
   <Color x:Key="ColCritical">#FF2D55</Color>
   <Color x:Key="ColHigh">#FF6B35</Color>
   <Color x:Key="ColMedium">#FFD700</Color>
   <Color x:Key="ColLow">#4FC3F7</Color>
   <Color x:Key="ColInfo">#9E9E9E</Color>
-  <Color x:Key="ColRowAlt">#0D0D25</Color>
-  <Color x:Key="ColRowNormal">#0A0A1E</Color>
   <Color x:Key="ColPanelBorder">#2A1A5A</Color>
+  <Color x:Key="ColGlassBorder">#507B3FE4</Color>
 
   <!-- Brushes -->
-  <SolidColorBrush x:Key="BrDeepVoid"         Color="{StaticResource ColDeepVoid}"/>
-  <SolidColorBrush x:Key="BrAbyss"            Color="{StaticResource ColAbyss}"/>
-  <SolidColorBrush x:Key="BrDarkMagic"        Color="{StaticResource ColDarkMagic}"/>
-  <SolidColorBrush x:Key="BrPurpleShadow"     Color="{StaticResource ColPurpleShadow}"/>
-  <SolidColorBrush x:Key="BrPatronusSilver"   Color="{StaticResource ColPatronusSilver}"/>
-  <SolidColorBrush x:Key="BrPatronusGlow"     Color="{StaticResource ColPatronusGlow}"/>
-  <SolidColorBrush x:Key="BrPatronusCore"     Color="{StaticResource ColPatronusCore}"/>
-  <SolidColorBrush x:Key="BrGryffindorGold"   Color="{StaticResource ColGryffindorGold}"/>
-  <SolidColorBrush x:Key="BrGoldDim"          Color="{StaticResource ColGoldDim}"/>
-  <SolidColorBrush x:Key="BrCritical"         Color="{StaticResource ColCritical}"/>
-  <SolidColorBrush x:Key="BrHigh"             Color="{StaticResource ColHigh}"/>
-  <SolidColorBrush x:Key="BrMedium"           Color="{StaticResource ColMedium}"/>
-  <SolidColorBrush x:Key="BrLow"              Color="{StaticResource ColLow}"/>
-  <SolidColorBrush x:Key="BrInfo"             Color="{StaticResource ColInfo}"/>
-  <SolidColorBrush x:Key="BrPanelBorder"      Color="{StaticResource ColPanelBorder}"/>
-  <SolidColorBrush x:Key="BrTransparent"      Color="Transparent"/>
+  <SolidColorBrush x:Key="BrVoid"           Color="{StaticResource ColVoid}"/>
+  <SolidColorBrush x:Key="BrFog"            Color="{StaticResource ColFog}"/>
+  <SolidColorBrush x:Key="BrTeal"           Color="{StaticResource ColTeal}"/>
+  <SolidColorBrush x:Key="BrTealGlow"       Color="{StaticResource ColTealGlow}"/>
+  <SolidColorBrush x:Key="BrGold"           Color="{StaticResource ColGold}"/>
+  <SolidColorBrush x:Key="BrCritical"       Color="{StaticResource ColCritical}"/>
+  <SolidColorBrush x:Key="BrHigh"           Color="{StaticResource ColHigh}"/>
+  <SolidColorBrush x:Key="BrMedium"         Color="{StaticResource ColMedium}"/>
+  <SolidColorBrush x:Key="BrLow"            Color="{StaticResource ColLow}"/>
+  <SolidColorBrush x:Key="BrInfo"           Color="{StaticResource ColInfo}"/>
+  <SolidColorBrush x:Key="BrPanelBorder"    Color="{StaticResource ColPanelBorder}"/>
+  <SolidColorBrush x:Key="BrTransparent"    Color="Transparent"/>
 
-  <!-- Popup/list system brushes for dark dropdown readability -->
-  <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#0D0D28"/>
-  <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#0D0D28"/>
-  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2E1A5E"/>
+  <!-- Legacy key aliases so existing XAML bindings keep working -->
+  <SolidColorBrush x:Key="BrDeepVoid"       Color="{StaticResource ColVoid}"/>
+  <SolidColorBrush x:Key="BrAbyss"          Color="{StaticResource ColAbyss}"/>
+  <SolidColorBrush x:Key="BrDarkMagic"      Color="{StaticResource ColFog}"/>
+  <SolidColorBrush x:Key="BrPurpleShadow"   Color="{StaticResource ColDeepTeal}"/>
+  <SolidColorBrush x:Key="BrPatronusSilver" Color="{StaticResource ColText}"/>
+  <SolidColorBrush x:Key="BrPatronusGlow"   Color="{StaticResource ColMist}"/>
+  <SolidColorBrush x:Key="BrPatronusCore"   Color="{StaticResource ColTextBright}"/>
+  <SolidColorBrush x:Key="BrGryffindorGold" Color="{StaticResource ColGold}"/>
+  <SolidColorBrush x:Key="BrGoldDim"        Color="{StaticResource ColGoldDim}"/>
+  <SolidColorBrush x:Key="BrGlassWhite"     Color="{StaticResource ColTextBright}"/>
+  <SolidColorBrush x:Key="BrFrostWhite"     Color="{StaticResource ColText}"/>
+  <SolidColorBrush x:Key="BrAqua"           Color="{StaticResource ColTealGlow}"/>
+  <SolidColorBrush x:Key="BrAquaLight"      Color="{StaticResource ColMist}"/>
+  <SolidColorBrush x:Key="BrAquaFrost"      Color="{StaticResource ColGold}"/>
+  <SolidColorBrush x:Key="BrGlass"          Color="#1A2E1A5E"/>
+  <SolidColorBrush x:Key="BrGlassBorder"    Color="{StaticResource ColGlassBorder}"/>
+  <SolidColorBrush x:Key="BrSkyDeep"        Color="{StaticResource ColVoid}"/>
+
+  <!-- System popup brushes -->
+  <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}"        Color="#0D0D28"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"       Color="#0D0D28"/>
+  <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"     Color="#302E1A5E"/>
   <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#E8F4FF"/>
 
+  <!-- Window background: deep void to purple -->
   <LinearGradientBrush x:Key="BrWindowBackground" StartPoint="0,0" EndPoint="1,1">
-    <GradientStop Color="{StaticResource ColDeepVoid}"    Offset="0.0"/>
-    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="0.5"/>
-    <GradientStop Color="{StaticResource ColDeepVoid}"    Offset="1.0"/>
+    <GradientStop Color="#08081A" Offset="0.0"/>
+    <GradientStop Color="#1A0D3D" Offset="0.5"/>
+    <GradientStop Color="#08081A" Offset="1.0"/>
   </LinearGradientBrush>
 
+  <!-- Header: purple shimmer -->
   <LinearGradientBrush x:Key="BrHeaderBackground" StartPoint="0,0" EndPoint="1,0">
-    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="0.0"/>
-    <GradientStop Color="{StaticResource ColSpellArc}"     Offset="0.5"/>
-    <GradientStop Color="{StaticResource ColPurpleShadow}" Offset="1.0"/>
+    <GradientStop Color="#1A0D3D" Offset="0.0"/>
+    <GradientStop Color="#2E1A5E" Offset="0.5"/>
+    <GradientStop Color="#1A0D3D" Offset="1.0"/>
   </LinearGradientBrush>
 
+  <!-- Button fill â€” teal glass -->
   <LinearGradientBrush x:Key="BrScanButton" StartPoint="0,0" EndPoint="0,1">
-    <GradientStop Color="#3D1C7A" Offset="0"/>
-    <GradientStop Color="#1E0A40" Offset="1"/>
+    <GradientStop Color="#601A4A36" Offset="0"/>
+    <GradientStop Color="#300A2018" Offset="1"/>
   </LinearGradientBrush>
 
   <LinearGradientBrush x:Key="BrScanButtonHover" StartPoint="0,0" EndPoint="0,1">
-    <GradientStop Color="#5A2EA8" Offset="0"/>
-    <GradientStop Color="#2E1060" Offset="1"/>
+    <GradientStop Color="#902A7A56" Offset="0"/>
+    <GradientStop Color="#501A4A36" Offset="1"/>
   </LinearGradientBrush>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        Typography
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <FontFamily x:Key="FntWraith">Segoe UI</FontFamily>
 
-  <!-- ═══════════════════════════════════════════════
-       Window chrome / base style
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       Window
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="WraithWindow" TargetType="Window">
-    <Setter Property="Background"   Value="{StaticResource BrWindowBackground}"/>
-    <Setter Property="Foreground"   Value="{StaticResource BrPatronusSilver}"/>
-    <Setter Property="FontFamily"   Value="{StaticResource FntWraith}"/>
-    <Setter Property="FontSize"     Value="13"/>
+    <Setter Property="Background"  Value="{StaticResource BrWindowBackground}"/>
+    <Setter Property="Foreground"  Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="FontFamily"  Value="{StaticResource FntWraith}"/>
+    <Setter Property="FontSize"    Value="13"/>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
-       Panel / Border
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       Spell Panel â€” glassy dark teal bubble
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="SpellPanel" TargetType="Border">
-    <Setter Property="Background"      Value="#10102A"/>
-    <Setter Property="BorderBrush"     Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#30A8C8E8" Offset="0.0"/>
+          <GradientStop Color="#100F0F2E" Offset="0.5"/>
+          <GradientStop Color="#180F0F2E" Offset="1.0"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="BorderBrush">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#80A8C8E8" Offset="0.0"/>
+          <GradientStop Color="#252E1A5E" Offset="1.0"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
     <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="CornerRadius"    Value="6"/>
+    <Setter Property="CornerRadius"    Value="14"/>
     <Setter Property="Padding"         Value="12"/>
     <Setter Property="Effect">
       <Setter.Value>
-        <DropShadowEffect Color="#4D2090" BlurRadius="18" ShadowDepth="0" Opacity="0.5"/>
+        <DropShadowEffect Color="#7B3FE4" BlurRadius="24" ShadowDepth="0" Opacity="0.3"/>
       </Setter.Value>
     </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
-       Buttons
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       Buttons â€” full-body Aero glass, Deathly Hallows teal+gold
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="SpellButton" TargetType="Button">
-    <Setter Property="Background"   Value="{StaticResource BrScanButton}"/>
-    <Setter Property="Foreground"   Value="{StaticResource BrPatronusCore}"/>
-    <Setter Property="BorderBrush"  Value="{StaticResource BrPatronusGlow}"/>
+    <Setter Property="Foreground"      Value="{StaticResource BrPatronusCore}"/>
     <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="FontSize"     Value="13"/>
-    <Setter Property="FontWeight"   Value="SemiBold"/>
-    <Setter Property="Padding"      Value="18,8"/>
-    <Setter Property="Cursor"       Value="Hand"/>
+    <Setter Property="FontSize"        Value="13"/>
+    <Setter Property="FontWeight"      Value="SemiBold"/>
+    <Setter Property="Padding"         Value="18,8"/>
+    <Setter Property="Cursor"          Value="Hand"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="Bd"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="4"
-                  Padding="{TemplateBinding Padding}">
+          <Border x:Name="Bd" BorderThickness="1" CornerRadius="12"
+                  ClipToBounds="True" SnapsToDevicePixels="True">
+  <!-- Aero glass: white gloss top half, dark purple bottom half -->
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <!-- True iOS liquid glass: thin specular top, mostly transparent body, rim light bottom -->
+                <GradientStop Color="#60FFFFFF" Offset="0.00"/>
+                <GradientStop Color="#18FFFFFF" Offset="0.18"/>
+                <GradientStop Color="#08FFFFFF" Offset="0.45"/>
+                <GradientStop Color="#123D1C7A" Offset="0.55"/>
+                <GradientStop Color="#225A2EA8" Offset="0.80"/>
+                <GradientStop Color="#38A8C8E8" Offset="1.00"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#EEA8C8E8" Offset="0.0"/>
+                <GradientStop Color="#407B3FE4" Offset="0.5"/>
+                <GradientStop Color="#70A8C8E8" Offset="1.0"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
             <Border.Effect>
-              <DropShadowEffect x:Name="BtnGlow" Color="#7B3FE4" BlurRadius="6" ShadowDepth="0" Opacity="0.5"/>
+              <DropShadowEffect Color="#7B3FE4" BlurRadius="12" ShadowDepth="0" Opacity="0.6"/>
             </Border.Effect>
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Margin="{TemplateBinding Padding}">
+              <ContentPresenter.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="4" ShadowDepth="1" Opacity="0.8"/>
+              </ContentPresenter.Effect>
+            </ContentPresenter>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="{StaticResource BrScanButtonHover}"/>
+              <Setter TargetName="Bd" Property="Background">
+                <Setter.Value>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#80FFFFFF" Offset="0.00"/>
+                    <GradientStop Color="#28FFFFFF" Offset="0.18"/>
+                    <GradientStop Color="#10FFFFFF" Offset="0.45"/>
+                    <GradientStop Color="#1A5A2EA8" Offset="0.55"/>
+                    <GradientStop Color="#337B3FE4" Offset="0.80"/>
+                    <GradientStop Color="#55C8D8E8" Offset="1.00"/>
+                  </LinearGradientBrush>
+                </Setter.Value>
+              </Setter>
+              <Setter TargetName="Bd" Property="BorderBrush">
+                <Setter.Value>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#FFE8F0FF" Offset="0.0"/>
+                    <GradientStop Color="#80A8C8E8" Offset="1.0"/>
+                  </LinearGradientBrush>
+                </Setter.Value>
+              </Setter>
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="#150830"/>
+              <Setter TargetName="Bd" Property="Background">
+                <Setter.Value>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#800A2018" Offset="0.00"/>
+                    <GradientStop Color="#601A4A36" Offset="1.00"/>
+                  </LinearGradientBrush>
+                </Setter.Value>
+              </Setter>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
               <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
@@ -143,25 +222,41 @@
   </Style>
 
   <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
-    <Setter Property="BorderBrush"  Value="{StaticResource BrCritical}"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="Bd"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="4"
-                  Padding="{TemplateBinding Padding}">
+          <Border x:Name="Bd" BorderThickness="1" CornerRadius="12"
+                  ClipToBounds="True" SnapsToDevicePixels="True">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#F0FFFFFF" Offset="0.00"/>
+                <GradientStop Color="#BBFFEEEE" Offset="0.45"/>
+                <GradientStop Color="#88FFAAAA" Offset="0.49"/>
+                <GradientStop Color="#00600F1E" Offset="0.50"/>
+                <GradientStop Color="#CCAA2030" Offset="0.51"/>
+                <GradientStop Color="#EEDD3050" Offset="0.75"/>
+                <GradientStop Color="#FF801828" Offset="1.00"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#CCE03040" Offset="0.0"/>
+                <GradientStop Color="#60AA2030" Offset="1.0"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
             <Border.Effect>
-              <DropShadowEffect x:Name="BtnGlow" Color="#FF2D55" BlurRadius="6" ShadowDepth="0" Opacity="0.4"/>
+              <DropShadowEffect Color="#E03040" BlurRadius="12" ShadowDepth="0" Opacity="0.5"/>
             </Border.Effect>
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Margin="{TemplateBinding Padding}">
+              <ContentPresenter.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="3" ShadowDepth="1" Opacity="0.6"/>
+              </ContentPresenter.Effect>
+            </ContentPresenter>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Bd" Property="BorderBrush" Value="#FF6070"/>
-              <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
+              <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
               <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
@@ -172,33 +267,34 @@
     </Setter>
   </Style>
 
-  <!-- Amber warning button — used for the update-ready notification in the title bar -->
   <Style x:Key="WarningButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
-    <Setter Property="Background"   Value="#1AFF9500"/>
-    <Setter Property="BorderBrush"  Value="#FF9500"/>
-    <Setter Property="Foreground"   Value="#FF9500"/>
-    <Setter Property="FontSize"     Value="10"/>
-    <Setter Property="Padding"      Value="10,0"/>
+    <Setter Property="Foreground"  Value="{StaticResource BrGold}"/>
+    <Setter Property="FontSize"    Value="10"/>
+    <Setter Property="Padding"     Value="10,0"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="Bd"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="3"
-                  Padding="{TemplateBinding Padding}">
+          <Border x:Name="Bd" CornerRadius="8" Padding="{TemplateBinding Padding}" BorderThickness="1">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#60C8A84A" Offset="0"/>
+                <GradientStop Color="#20806020" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#A0C8A84A" Offset="0"/>
+                <GradientStop Color="#40806020" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
             <Border.Effect>
-              <DropShadowEffect x:Name="BtnGlow" Color="#FF9500" BlurRadius="8" ShadowDepth="0" Opacity="0.7"/>
+              <DropShadowEffect Color="#C8A84A" BlurRadius="10" ShadowDepth="0" Opacity="0.5"/>
             </Border.Effect>
             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="#33FF9500"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="#0DFF9500"/>
+              <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -207,84 +303,159 @@
   </Style>
 
   <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource SpellButton}">
-    <Setter Property="Background"  Value="Transparent"/>
-    <Setter Property="BorderBrush" Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Foreground"  Value="{StaticResource BrPatronusSilver}"/>
     <Setter Property="FontSize"    Value="12"/>
     <Setter Property="Padding"     Value="12,6"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd" BorderThickness="1" CornerRadius="10"
+                  ClipToBounds="True" SnapsToDevicePixels="True">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#45FFFFFF" Offset="0.00"/>
+                <GradientStop Color="#12FFFFFF" Offset="0.18"/>
+                <GradientStop Color="#06FFFFFF" Offset="0.45"/>
+                <GradientStop Color="#0E2E1A5E" Offset="0.55"/>
+                <GradientStop Color="#183D1C7A" Offset="0.80"/>
+                <GradientStop Color="#28A8C8E8" Offset="1.00"/>
+              </LinearGradientBrush>
+            </Border.Background>
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#CCA8C8E8" Offset="0"/>
+                <GradientStop Color="#307B3FE4" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
+            <Border.Effect>
+              <DropShadowEffect Color="#7B3FE4" BlurRadius="8" ShadowDepth="0" Opacity="0.3"/>
+            </Border.Effect>
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Margin="{TemplateBinding Padding}">
+              <ContentPresenter.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="2" ShadowDepth="1" Opacity="0.5"/>
+              </ContentPresenter.Effect>
+            </ContentPresenter>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background">
+                <Setter.Value>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#60FFFFFF" Offset="0.00"/>
+                    <GradientStop Color="#1AFFFFFF" Offset="0.18"/>
+                    <GradientStop Color="#0AFFFFFF" Offset="0.45"/>
+                    <GradientStop Color="#185A2EA8" Offset="0.55"/>
+                    <GradientStop Color="#287B3FE4" Offset="1.00"/>
+                  </LinearGradientBrush>
+                </Setter.Value>
+              </Setter>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Bd" Property="Opacity" Value="0.35"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        TextBox
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style TargetType="TextBox">
-    <Setter Property="Background"        Value="#0D0D28"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#28253A2E" Offset="0"/>
+          <GradientStop Color="#18101810" Offset="1"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
     <Setter Property="Foreground"        Value="{StaticResource BrPatronusSilver}"/>
-    <Setter Property="BorderBrush"       Value="{StaticResource BrPanelBorder}"/>
     <Setter Property="BorderThickness"   Value="1"/>
-    <Setter Property="CaretBrush"        Value="{StaticResource BrPatronusGlow}"/>
-    <Setter Property="SelectionBrush"    Value="#3D2080"/>
-    <Setter Property="Padding"           Value="6,4"/>
+    <Setter Property="CaretBrush"        Value="{StaticResource BrTealGlow}"/>
+    <Setter Property="SelectionBrush"    Value="#401A4A36"/>
+    <Setter Property="Padding"           Value="8,5"/>
     <Setter Property="FontSize"          Value="12"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border x:Name="Bd" CornerRadius="8" Padding="{TemplateBinding Padding}"
+                  Background="{TemplateBinding Background}" BorderThickness="1">
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#80C8A84A" Offset="0"/>
+                <GradientStop Color="#302A7A56" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
+            <Border.Effect>
+              <DropShadowEffect Color="#2A7A56" BlurRadius="6" ShadowDepth="0" Opacity="0.25"/>
+            </Border.Effect>
+            <ScrollViewer x:Name="PART_ContentHost" Focusable="False" Margin="0"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsFocused" Value="True">
+              <Setter TargetName="Bd" Property="Effect">
+                <Setter.Value>
+                  <DropShadowEffect Color="#C8A84A" BlurRadius="12" ShadowDepth="0" Opacity="0.45"/>
+                </Setter.Value>
+              </Setter>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        ComboBox
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="WraithComboBoxItem" TargetType="ComboBoxItem">
     <Setter Property="Foreground" Value="{StaticResource BrPatronusSilver}"/>
-    <Setter Property="Background" Value="#0D0D28"/>
-    <Setter Property="Padding" Value="6,3"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding"    Value="8,4"/>
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Style.Triggers>
       <Trigger Property="IsMouseOver" Value="True">
-        <Setter Property="Background" Value="#1A0D3D"/>
+        <Setter Property="Background" Value="#28C8A84A"/>
         <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
       </Trigger>
       <Trigger Property="IsHighlighted" Value="True">
-        <Setter Property="Background" Value="#2E1A5E"/>
-        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+        <Setter Property="Background" Value="#301A4A36"/>
       </Trigger>
       <Trigger Property="IsSelected" Value="True">
-        <Setter Property="Background" Value="#2E1A5E"/>
-        <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
+        <Setter Property="Background" Value="#401A4A36"/>
       </Trigger>
     </Style.Triggers>
   </Style>
 
-  <!-- ToggleButton used inside the ComboBox ControlTemplate -->
   <Style x:Key="WraithComboToggle" TargetType="ToggleButton">
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ToggleButton">
-          <Border x:Name="Bd"
-                  Background="{TemplateBinding Background}"
+          <Border x:Name="Bd" Background="{TemplateBinding Background}"
                   BorderBrush="{TemplateBinding BorderBrush}"
                   BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="3"
-                  SnapsToDevicePixels="True">
+                  CornerRadius="8" SnapsToDevicePixels="True">
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition/>
-                <ColumnDefinition Width="18"/>
+                <ColumnDefinition Width="20"/>
               </Grid.ColumnDefinitions>
-              <!-- transparent hit area over text portion -->
               <Border Grid.Column="0" Background="Transparent"/>
-              <!-- arrow column -->
-              <Path Grid.Column="1"
-                    x:Name="Arrow"
+              <Path Grid.Column="1" x:Name="Arrow"
                     Data="M 0 0 L 4 4 L 8 0 Z"
-                    Fill="{StaticResource BrPatronusSilver}"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"/>
+                    Fill="{StaticResource BrGold}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="#1A0D3D"/>
-              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BrPatronusSilver}"/>
+              <Setter TargetName="Bd" Property="Background" Value="#201A4A36"/>
             </Trigger>
             <Trigger Property="IsChecked" Value="True">
-              <Setter TargetName="Bd" Property="Background" Value="#1A0D3D"/>
+              <Setter TargetName="Bd" Property="Background" Value="#301A4A36"/>
               <Setter TargetName="Arrow" Property="Fill" Value="{StaticResource BrPatronusCore}"/>
             </Trigger>
           </ControlTemplate.Triggers>
@@ -294,14 +465,20 @@
   </Style>
 
   <Style TargetType="ComboBox">
-    <Setter Property="Background"         Value="#0D0D28"/>
-    <Setter Property="Foreground"         Value="{StaticResource BrPatronusSilver}"/>
-    <Setter Property="BorderBrush"        Value="{StaticResource BrPanelBorder}"/>
-    <Setter Property="BorderThickness"    Value="1"/>
-    <Setter Property="Padding"            Value="6,3"/>
-    <Setter Property="FontSize"           Value="12"/>
+    <Setter Property="Foreground"          Value="{StaticResource BrPatronusSilver}"/>
+    <Setter Property="BorderThickness"     Value="1"/>
+    <Setter Property="Padding"             Value="8,4"/>
+    <Setter Property="FontSize"            Value="12"/>
     <Setter Property="SnapsToDevicePixels" Value="True"/>
-    <Setter Property="ItemContainerStyle" Value="{StaticResource WraithComboBoxItem}"/>
+    <Setter Property="ItemContainerStyle"  Value="{StaticResource WraithComboBoxItem}"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#30253A2E" Offset="0"/>
+          <GradientStop Color="#18101810" Offset="1"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ComboBox">
@@ -309,32 +486,42 @@
             <ToggleButton x:Name="ToggleButton"
                           Style="{StaticResource WraithComboToggle}"
                           Background="{TemplateBinding Background}"
-                          BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}"
                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                          Focusable="False"/>
+                          Focusable="False">
+              <ToggleButton.BorderBrush>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                  <GradientStop Color="#70C8A84A" Offset="0"/>
+                  <GradientStop Color="#25C8A84A" Offset="1"/>
+                </LinearGradientBrush>
+              </ToggleButton.BorderBrush>
+            </ToggleButton>
             <ContentPresenter x:Name="ContentSite"
                               IsHitTestVisible="False"
                               Content="{TemplateBinding SelectionBoxItem}"
                               ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                              Margin="8,0,22,0"
+                              Margin="10,0,24,0"
                               VerticalAlignment="Center"
                               HorizontalAlignment="Left"/>
-            <Popup x:Name="Popup"
-                   Placement="Bottom"
+            <Popup x:Name="Popup" Placement="Bottom"
                    IsOpen="{TemplateBinding IsDropDownOpen}"
                    AllowsTransparency="True"
                    PopupAnimation="Slide"
                    Focusable="False">
-              <Grid x:Name="DropDown"
-                    SnapsToDevicePixels="True"
+              <Grid x:Name="DropDown" SnapsToDevicePixels="True"
                     MinWidth="{TemplateBinding ActualWidth}"
                     MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                <Border x:Name="DropDownBorder"
-                        Background="#0D0D28"
-                        BorderBrush="{StaticResource BrPanelBorder}"
-                        BorderThickness="1"
-                        CornerRadius="0,0,3,3"/>
+                <Border x:Name="DropDownBorder" CornerRadius="0,0,8,8" BorderThickness="1">
+                  <Border.Background>
+                    <SolidColorBrush Color="#E80A1410"/>
+                  </Border.Background>
+                  <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                      <GradientStop Color="#40C8A84A" Offset="0"/>
+                      <GradientStop Color="#20C8A84A" Offset="1"/>
+                    </LinearGradientBrush>
+                  </Border.BorderBrush>
+                </Border>
                 <ScrollViewer SnapsToDevicePixels="True">
                   <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
                 </ScrollViewer>
@@ -346,15 +533,15 @@
     </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        ListView / GridView
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style TargetType="ListView">
     <Setter Property="Background"      Value="Transparent"/>
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="Foreground"      Value="{StaticResource BrPatronusSilver}"/>
     <Setter Property="FontSize"        Value="12"/>
-    <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+    <Setter Property="VirtualizingPanel.IsVirtualizing"     Value="True"/>
     <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
     <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
   </Style>
@@ -366,51 +553,62 @@
     <Setter Property="Foreground" Value="{StaticResource BrPatronusSilver}"/>
     <Style.Triggers>
       <Trigger Property="IsSelected" Value="True">
-        <Setter Property="Background" Value="#2E1A5E"/>
+        <Setter Property="Background" Value="#401A4A36"/>
         <Setter Property="Foreground" Value="{StaticResource BrPatronusCore}"/>
       </Trigger>
       <Trigger Property="IsMouseOver" Value="True">
-        <Setter Property="Background" Value="#1A0D3D"/>
+        <Setter Property="Background" Value="#20C8A84A"/>
       </Trigger>
     </Style.Triggers>
   </Style>
 
   <Style TargetType="GridViewColumnHeader">
-    <Setter Property="Background"      Value="#16163A"/>
-    <Setter Property="Foreground"      Value="{StaticResource BrGryffindorGold}"/>
-    <Setter Property="BorderBrush"     Value="{StaticResource BrPanelBorder}"/>
+    <Setter Property="Foreground"      Value="{StaticResource BrGold}"/>
     <Setter Property="BorderThickness" Value="0,0,1,1"/>
     <Setter Property="Padding"         Value="8,5"/>
     <Setter Property="FontWeight"      Value="SemiBold"/>
     <Setter Property="FontSize"        Value="11"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#301A4A36" Offset="0"/>
+          <GradientStop Color="#100A1410" Offset="1"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="BorderBrush">
+      <Setter.Value>
+        <SolidColorBrush Color="#30C8A84A"/>
+      </Setter.Value>
+    </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        ScrollBar
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style TargetType="ScrollBar">
-    <Setter Property="Background" Value="#0A0A1E"/>
-    <Setter Property="Foreground" Value="{StaticResource BrPanelBorder}"/>
-    <Setter Property="Width"      Value="8"/>
+    <Setter Property="Background" Value="#101810"/>
+    <Setter Property="Foreground" Value="{StaticResource BrTeal}"/>
+    <Setter Property="Width"      Value="6"/>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
-       Severity badge style (TextBlock)
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       Severity badge
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="SeverityBadge" TargetType="Border">
-    <Setter Property="CornerRadius" Value="3"/>
+    <Setter Property="CornerRadius" Value="4"/>
     <Setter Property="Padding"      Value="5,1"/>
     <Setter Property="HorizontalAlignment" Value="Center"/>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
-       Summary count block
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       Summary count pill
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="SummaryBlock" TargetType="Border">
-    <Setter Property="CornerRadius"    Value="6"/>
-    <Setter Property="Padding"         Value="12,6"/>
-    <Setter Property="Margin"          Value="4,0"/>
-    <Setter Property="MinWidth"        Value="70"/>
+    <Setter Property="CornerRadius"        Value="10"/>
+    <Setter Property="Padding"             Value="12,6"/>
+    <Setter Property="Margin"              Value="4,0"/>
+    <Setter Property="MinWidth"            Value="70"/>
     <Setter Property="HorizontalAlignment" Value="Center"/>
     <Setter Property="Effect">
       <Setter.Value>
@@ -419,40 +617,63 @@
     </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        Log TextBox
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style x:Key="LogBox" TargetType="TextBox">
-    <Setter Property="Background"      Value="#06061A"/>
-    <Setter Property="Foreground"      Value="#7ABFAA"/>
-    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#20253A2E" Offset="0"/>
+          <GradientStop Color="#10060808" Offset="1"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="Foreground"      Value="#7AC8D8C0"/>
+    <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="FontFamily"      Value="Consolas"/>
     <Setter Property="FontSize"        Value="11"/>
     <Setter Property="IsReadOnly"      Value="True"/>
     <Setter Property="TextWrapping"    Value="Wrap"/>
     <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
-    <Setter Property="Padding"         Value="6"/>
+    <Setter Property="Padding"         Value="8"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TextBox">
+          <Border CornerRadius="8" Padding="{TemplateBinding Padding}"
+                  Background="{TemplateBinding Background}" BorderThickness="1">
+            <Border.BorderBrush>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#50C8A84A" Offset="0"/>
+                <GradientStop Color="#151A4A36" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.BorderBrush>
+            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
        Separator
-       ═══════════════════════════════════════════════ -->
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style TargetType="Separator">
-    <Setter Property="Background"  Value="{StaticResource BrPanelBorder}"/>
-    <Setter Property="Height"      Value="1"/>
-    <Setter Property="Margin"      Value="0,4"/>
+    <Setter Property="Background" Value="#25C8A84A"/>
+    <Setter Property="Height"     Value="1"/>
+    <Setter Property="Margin"     Value="0,4"/>
   </Style>
 
-  <!-- ═══════════════════════════════════════════════
-       Label / TextBlock defaults
-       ═══════════════════════════════════════════════ -->
+  <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+       TextBlock
+       â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
   <Style TargetType="TextBlock">
     <Setter Property="Foreground"  Value="{StaticResource BrPatronusSilver}"/>
     <Setter Property="FontFamily"  Value="{StaticResource FntWraith}"/>
   </Style>
 
   <Style x:Key="GoldLabel" TargetType="TextBlock">
-    <Setter Property="Foreground"  Value="{StaticResource BrGryffindorGold}"/>
+    <Setter Property="Foreground"  Value="{StaticResource BrGold}"/>
     <Setter Property="FontWeight"  Value="SemiBold"/>
     <Setter Property="FontSize"    Value="11"/>
   </Style>
@@ -463,18 +684,18 @@
     <Setter Property="FontWeight"  Value="Bold"/>
     <Setter Property="Effect">
       <Setter.Value>
-        <DropShadowEffect Color="{StaticResource ColPatronusGlow}" BlurRadius="20" ShadowDepth="0" Opacity="0.9"/>
+        <DropShadowEffect Color="#2A7A56" BlurRadius="22" ShadowDepth="0" Opacity="0.85"/>
       </Setter.Value>
     </Setter>
   </Style>
 
   <Style x:Key="SubtitleLabel" TargetType="TextBlock">
-    <Setter Property="Foreground"  Value="{StaticResource BrGryffindorGold}"/>
+    <Setter Property="Foreground"  Value="{StaticResource BrGold}"/>
     <Setter Property="FontSize"    Value="12"/>
     <Setter Property="FontStyle"   Value="Italic"/>
     <Setter Property="Effect">
       <Setter.Value>
-        <DropShadowEffect Color="{StaticResource ColGryffindorGold}" BlurRadius="8" ShadowDepth="0" Opacity="0.6"/>
+        <DropShadowEffect Color="#C8A84A" BlurRadius="8" ShadowDepth="0" Opacity="0.55"/>
       </Setter.Value>
     </Setter>
   </Style>
@@ -488,10 +709,27 @@
 
   <!-- ProgressBar -->
   <Style TargetType="ProgressBar">
-    <Setter Property="Background"   Value="#0D0D28"/>
-    <Setter Property="BorderBrush"  Value="{StaticResource BrPanelBorder}"/>
-    <Setter Property="Foreground"   Value="{StaticResource BrPatronusGlow}"/>
-    <Setter Property="Height"       Value="4"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Height"          Value="5"/>
+    <Setter Property="Background">
+      <Setter.Value>
+        <SolidColorBrush Color="#151A4A36"/>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="BorderBrush">
+      <Setter.Value>
+        <SolidColorBrush Color="#30C8A84A"/>
+      </Setter.Value>
+    </Setter>
+    <Setter Property="Foreground">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+          <GradientStop Color="#2A7A56" Offset="0"/>
+          <GradientStop Color="#C8A84A" Offset="0.5"/>
+          <GradientStop Color="#4A9A7A" Offset="1"/>
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
   </Style>
 
 </ResourceDictionary>
