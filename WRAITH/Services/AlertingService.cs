@@ -517,13 +517,14 @@ public sealed class AlertingService
         return v.Length <= max ? v : v[..max] + "…";
     }
 
-    /// Discord rejects embed field values that are empty strings — use zero-width space fallback.
-    /// Also strip \r to avoid Discord rejecting \r\n line endings (Discord wants \n only).
+    /// Discord hard-limits field values to 1024 chars.
+    /// Truncate at 1023 so the appended ellipsis keeps total ≤ 1024.
+    /// Also strip \r to avoid Discord rejecting \r\n line endings.
     private static string SafeField(string? value, int max)
     {
         var v = (value ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
-        v = v.Length <= max ? v : v[..max] + "…";
-        return v.Length > 0 ? v : "\u200b";
+        if (v.Length <= max - 1) return v.Length > 0 ? v : "\u200b";
+        return v[..(max - 1)] + "…";
     }
 
     // Debug log path — written next to the exe so it's always easy to find.
