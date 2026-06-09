@@ -60,6 +60,8 @@ public partial class App : Application
         bool forceSetup = e.Args.Any(a =>
             string.Equals(a, "--setup", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "-setup", StringComparison.OrdinalIgnoreCase));
+        bool forceTour = e.Args.Any(a =>
+            string.Equals(a, "--tour", StringComparison.OrdinalIgnoreCase));
         Trace($"OnStartup: baseDir={baseDir}, IsFirstRun={BootstrapService.IsFirstRun(baseDir)}, ForceSetup={forceSetup}");
 
         if (forceSetup || BootstrapService.IsFirstRun(baseDir))
@@ -79,6 +81,16 @@ public partial class App : Application
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             var main = new MainWindow();
             main.Show();
+
+            var tourFile = System.IO.Path.Combine(baseDir, "wraith.tour");
+            if (forceTour || !System.IO.File.Exists(tourFile))
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    var tour = new WalkthroughWindow(tourFile) { Owner = main };
+                    tour.Show();
+                }, DispatcherPriority.Loaded);
+            }
 
             Dispatcher.BeginInvoke(async () => await UpdateService.CheckForUpdatesAsync(),
                 DispatcherPriority.ApplicationIdle);

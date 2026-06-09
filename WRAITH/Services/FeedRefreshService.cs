@@ -43,10 +43,17 @@ public sealed class FeedRefreshService
     {
         new FeedSource(
             Id:                "vuln_drivers",
-            DisplayName:       "Microsoft vulnerable driver blocklist",
-            SourceUrl:         "https://raw.githubusercontent.com/MicrosoftDocs/windows-itpro-docs/public/windows/security/threat-protection/windows-defender-application-control/microsoft-recommended-driver-block-rules.md",
-            LocalRelativePath: "vuln_drivers/driver_blocklist.xml",
-            Description:       "Microsoft's recommended driver blocklist (BYOVD detection)."),
+            DisplayName:       "LOLDrivers vulnerable driver list",
+            // The MicrosoftDocs/windows-itpro-docs repo was archived in 2024
+            // and the markdown source page returns 404 — that's why the
+            // previous URL silently failed since the feed pane was added.
+            // LOLDrivers (loldrivers.io) is a community-maintained superset
+            // of Microsoft's recommended blocklist plus community-submitted
+            // BYOVD samples, published as machine-readable JSON. The vuln-
+            // driver scanner now consumes this format directly.
+            SourceUrl:         "https://www.loldrivers.io/api/drivers.json",
+            LocalRelativePath: "vuln_drivers/loldrivers.json",
+            Description:       "LOLDrivers community-maintained vulnerable driver catalog (BYOVD detection)."),
 
         new FeedSource(
             Id:                "tor",
@@ -89,12 +96,69 @@ public sealed class FeedRefreshService
             SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestmd5.txt",
             LocalRelativePath: "digitalside/hashes_md5.txt",
             Description:       "DigitalSide OSINT malware MD5 hashes."),
+
+        // ── abuse.ch feeds ──────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "urlhaus",
+            DisplayName:       "URLhaus malicious URLs",
+            SourceUrl:         "https://urlhaus.abuse.ch/downloads/text/",
+            LocalRelativePath: "urlhaus/urls.txt",
+            Description:       "abuse.ch URLhaus — active malicious URLs (no API key)."),
+
+        new FeedSource(
+            Id:                "feodo",
+            DisplayName:       "Feodo botnet C2 IPs",
+            SourceUrl:         "https://feodotracker.abuse.ch/downloads/ipblocklist.txt",
+            LocalRelativePath: "feodo/c2_ips.txt",
+            Description:       "abuse.ch Feodo Tracker — active botnet C2 IPs (no API key)."),
+
+        // ── Community aggregated IPs ─────────────────────────────────────────
+        new FeedSource(
+            Id:                "ipsum",
+            DisplayName:       "IPsum aggregated bad IPs",
+            SourceUrl:         "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt",
+            LocalRelativePath: "ipsum/ips.txt",
+            Description:       "IPsum — IPs seen across 30+ block lists (score ≥ 3 threshold applied at scan time)."),
+
+        new FeedSource(
+            Id:                "et_compromised",
+            DisplayName:       "EmergingThreats compromised hosts",
+            SourceUrl:         "https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
+            LocalRelativePath: "et/compromised_ips.txt",
+            Description:       "EmergingThreats — compromised/rooted hosts (no API key)."),
+
+        // ── Phishing ─────────────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "openphish",
+            DisplayName:       "OpenPhish phishing URLs",
+            SourceUrl:         "https://openphish.com/feed.txt",
+            LocalRelativePath: "openphish/urls.txt",
+            Description:       "OpenPhish — active phishing URLs (no API key, free tier)."),
+
+        // ── Malicious domains ─────────────────────────────────────────────────
+        new FeedSource(
+            Id:                "botvrij_domains",
+            DisplayName:       "Botvrij.eu malicious domains",
+            SourceUrl:         "https://www.botvrij.eu/data/ioclist.domain.raw",
+            LocalRelativePath: "botvrij/domains.txt",
+            Description:       "Botvrij.eu — community-curated malicious domain IOCs (no API key)."),
     };
 
-    private static readonly HttpClient _http = new()
+    // DigitalSide + LOLDrivers (and most CDN-fronted feeds) return 403 to
+    // requests with an empty or default .NET User-Agent — this was the cause
+    // of every "Error" status in the feed pane except Tor (whose endpoint
+    // doesn't gate UA). The string is honest and identifies the project so
+    // feed operators can contact us if a feed needs throttling.
+    private static readonly HttpClient _http = BuildHttpClient();
+
+    private static HttpClient BuildHttpClient()
     {
-        Timeout = TimeSpan.FromSeconds(60),
-    };
+        var c = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        c.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "WRAITH-ThreatHunter/1.0 (+https://github.com/OpenSource-For-Freedom/wraith)");
+        c.DefaultRequestHeaders.Accept.ParseAdd("*/*");
+        return c;
+    }
 
     /// <summary>Path to the feeds directory, stable across Velopack updates.</summary>
     public static string FeedsRoot => Path.GetFullPath(Path.Combine(

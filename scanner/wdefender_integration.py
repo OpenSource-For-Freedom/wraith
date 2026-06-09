@@ -314,9 +314,7 @@ def check_defender_status() -> List[Dict]:
                     "dormant threats residing on disk will not be detected. Enable scheduled "
                     "scanning: Set-MpPreference -ScanScheduleQuickScanTime 03:00."
                 ),
-                "severity": "CRITICAL",
-                "category": "defender",
-                "subcategory": "scan_currency",
+                "severity": "HIGH",
             }
         )
     elif best_scan_age >= LAST_SCAN_WARNING_DAYS:
