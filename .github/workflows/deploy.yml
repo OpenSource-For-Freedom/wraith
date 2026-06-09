@@ -27,6 +27,15 @@ name: Deploy
 on:
   push:
     branches: [ main ]
+    # Doc-only commits don't change anything that ships — skip the build,
+    # save the runner minutes, and keep the patch number from ticking up
+    # for a README typo fix. The tags trigger below is intentionally
+    # unrestricted: an explicit `git tag vX.Y.Z && git push` should
+    # always cut a release regardless of which files changed.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
     tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 permissions:
