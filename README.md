@@ -37,7 +37,7 @@ Two install paths — pick one. **Only the installer enables in-app auto-update.
 |---|---|---|
 | Asset | `WRAITH-Setup.exe` | `WRAITH-vX.Y.Z-win-x64.zip` |
 | Install location | `%LocalAppData%\WRAITH\` (managed by Velopack) | Anywhere — extract and run |
-| Launcher | Start Menu / desktop shortcut | `START.bat` |
+| Launcher | Start Menu / desktop shortcut | Double-click `WRAITH.exe` |
 | **Auto-update** | ✅ Background download, click "Restart & Apply" | ❌ Update dialog opens the release page for manual re-download |
 | Best for | Day-to-day use | Air-gapped machines, USB / forensic kits, CI |
 
@@ -175,7 +175,9 @@ LAUNCH.bat
 - Click **EXPECTO PATRONUM**
 - Export findings as JSON / CSV / HTML from the toolbar
 
-### Headless quick scan (no build required)
+### Headless quick scan (source build only)
+The `quick-scan.ps1` helper ships with the source tree, not the release
+ZIP. Clone the repo first, then:
 ```powershell
 .\quick-scan.ps1
 .\quick-scan.ps1 -Hours 168 -OutPath C:\wraith-report.json
