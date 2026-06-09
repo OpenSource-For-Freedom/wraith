@@ -30,24 +30,45 @@ from typing import Any, Optional
 def feeds_root() -> Path:
     """Returns the directory the feed store lives in.
 
-    The %ProgramData% fallback uses C:\\ProgramData on Windows and
-    /var/lib on POSIX, so tests can override via WRAITH_FEEDS_DIR.
+    The %ProgramData% fallback uses C:\\ProgramData on Windows and the
+    home dir on POSIX. Tests override via WRAITH_FEEDS_DIR. Every branch
+    routes through Path.resolve(strict=False) so CodeQL's py/path-
+    injection sanitiser sees a canonicalised value before it flows into
+    the leaf path joins below.
     """
     override = os.environ.get("WRAITH_FEEDS_DIR")
     if override:
-        return Path(override)
+        try:
+            return Path(override).expanduser().resolve(strict=False)
+        except OSError:
+            pass  # fall through to default — bad override shouldn't crash
 
     program_data = os.environ.get("ProgramData") or os.environ.get("PROGRAMDATA")
     if program_data:
-        return Path(program_data) / "WRAITH" / "feeds"
+        return (Path(program_data) / "WRAITH" / "feeds").resolve(strict=False)
 
-    # POSIX fallback for test/dev environments
-    return Path.home() / ".wraith" / "feeds"
+    return (Path.home() / ".wraith" / "feeds").resolve(strict=False)
 
 
 def feed_path(feed_id: str, *segments: str) -> Path:
-    """Resolves a path under <feeds_root>/<feed_id>/..."""
-    return feeds_root().joinpath(feed_id, *segments)
+    """Resolves a path under <feeds_root>/<feed_id>/... with containment.
+
+    feed_id originates from FeedSource.LocalRelativePath in the C# side
+    (FeedRefreshService.cs) — a trusted producer — but CodeQL treats it
+    as tainted because it transits a string boundary. The containment
+    check below (resolve + relative_to) is both the actual safety net
+    against a traversal payload and the pattern the py/path-injection
+    sanitiser recognises.
+    """
+    root = feeds_root()
+    candidate = root.joinpath(feed_id, *segments).resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"feed path traversal blocked: feed_id={feed_id!r} segments={segments!r}"
+        ) from exc
+    return candidate
 
 
 @dataclass
@@ -141,6 +162,12 @@ FEED_VULN_DRIVERS = "vuln_drivers"
 FEED_TOR = "tor"
 FEED_DIGITALSIDE = "digitalside"
 FEED_SIGMA = "sigma"
+FEED_URLHAUS = "urlhaus"
+FEED_FEODO = "feodo"
+FEED_IPSUM = "ipsum"
+FEED_ET_COMPROMISED = "et_compromised"
+FEED_OPENPHISH = "openphish"
+FEED_BOTVRIJ = "botvrij_domains"
 
 
 def _public_api() -> list[str]:
@@ -156,6 +183,12 @@ def _public_api() -> list[str]:
         "FEED_TOR",
         "FEED_DIGITALSIDE",
         "FEED_SIGMA",
+        "FEED_URLHAUS",
+        "FEED_FEODO",
+        "FEED_IPSUM",
+        "FEED_ET_COMPROMISED",
+        "FEED_OPENPHISH",
+        "FEED_BOTVRIJ",
     ]
 
 

@@ -1,4 +1,4 @@
-"""Tests for vuln_driver_scanner against a stub blocklist."""
+"""Tests for vuln_driver_scanner against a stub LOLDrivers catalog."""
 
 from __future__ import annotations
 
@@ -11,19 +11,38 @@ import pytest
 import feed_store
 import vuln_driver_scanner
 
-# Minimal SiPolicy XML with a single hash. Real blocklist has thousands.
-SAMPLE_BLOCKLIST_XML = """<?xml version="1.0" encoding="utf-8"?>
-<SiPolicy xmlns="urn:schemas-microsoft-com:sipolicy">
-  <FileRules>
-    <Deny ID="ID_DENY_TEST_1"
-          FriendlyName="Vulnerable test driver xyz.sys"
-          Hash="ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890" />
-    <Deny ID="ID_DENY_TEST_2"
-          FriendlyName="Another vulnerable driver"
-          Hash="0011223344556677889900112233445566778899001122334455667788990011" />
-  </FileRules>
-</SiPolicy>
-"""
+# Minimal LOLDrivers JSON catalog with two entries. The real catalog has
+# 400+ entries; what matters here is the shape:
+#   [ { "Tags": [...],
+#       "KnownVulnerableSamples": [
+#         { "Filename": ..., "SHA256": ..., "Authentihash": {"SHA256": ...} } ] } ]
+SAMPLE_BLOCKLIST_JSON = [
+    {
+        "Tags": ["Vulnerable test driver xyz.sys"],
+        "KnownVulnerableSamples": [
+            {
+                "Filename": "xyz.sys",
+                # Mixed case on purpose — the parser must lowercase.
+                "SHA256": "ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+                "MD5": "00112233445566778899aabbccddeeff",
+            },
+        ],
+    },
+    {
+        "Tags": ["Another vulnerable driver"],
+        "KnownVulnerableSamples": [
+            {
+                "Filename": "another.sys",
+                "SHA256": "0011223344556677889900112233445566778899001122334455667788990011",
+                # Authentihash is the Authenticode hash — Get-AuthenticodeSignature
+                # returns this in the real flow, so it must be indexed too.
+                "Authentihash": {
+                    "SHA256": "9999888877776666555544443333222211110000ffffeeeeddddccccbbbbaaaa",
+                },
+            },
+        ],
+    },
+]
 
 
 @pytest.fixture(autouse=True)
@@ -33,9 +52,9 @@ def isolated_feeds(tmp_path, monkeypatch):
 
 
 def _write_blocklist(feeds_root):
-    target = feeds_root / "vuln_drivers" / "driver_blocklist.xml"
+    target = feeds_root / "vuln_drivers" / "loldrivers.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(SAMPLE_BLOCKLIST_XML, encoding="utf-8")
+    target.write_text(json.dumps(SAMPLE_BLOCKLIST_JSON), encoding="utf-8")
 
 
 def test_missing_feed_returns_info_finding(isolated_feeds):
@@ -49,20 +68,35 @@ def test_missing_feed_returns_info_finding(isolated_feeds):
 def test_blocklist_parse_normalises_hashes_lowercase(isolated_feeds):
     _write_blocklist(isolated_feeds)
     blocklist = vuln_driver_scanner._load_blocklist()
-    assert len(blocklist) == 2
-    # Hashes from the XML were mixed case; the parser lowercases.
+    # 2 top-level SHA256s plus 1 Authentihash SHA256 = 3 indexed hashes.
+    assert len(blocklist) == 3
+    # Mixed-case input must be lowercased.
     assert (
         "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" in blocklist
     )
     assert (
         "0011223344556677889900112233445566778899001122334455667788990011" in blocklist
     )
+    # Authentihash SHA256 must also be indexed — Get-AuthenticodeSignature
+    # returns this hash, not the file hash, for signed drivers.
+    assert (
+        "9999888877776666555544443333222211110000ffffeeeeddddccccbbbbaaaa" in blocklist
+    )
 
 
-def test_corrupt_xml_returns_empty(isolated_feeds):
-    target = isolated_feeds / "vuln_drivers" / "driver_blocklist.xml"
+def test_corrupt_json_returns_empty(isolated_feeds):
+    target = isolated_feeds / "vuln_drivers" / "loldrivers.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("<not><valid xml")
+    target.write_text("{not valid json")
+    assert vuln_driver_scanner._load_blocklist() == {}
+
+
+def test_unexpected_json_shape_returns_empty(isolated_feeds):
+    # LOLDrivers ships an array; if upstream ever wraps it in an object
+    # the parser should fail closed, not raise.
+    target = isolated_feeds / "vuln_drivers" / "loldrivers.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"data": []}')
     assert vuln_driver_scanner._load_blocklist() == {}
 
 

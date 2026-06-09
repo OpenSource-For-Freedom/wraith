@@ -665,6 +665,22 @@ def scan_intel_module() -> List[Dict]:
         return []
 
 
+# ── Mode: vuln_assess ────────────────────────────────────────────────────────────────
+# Local Nessus-style vulnerability assessment — OS patch level, privesc
+# vectors, firewall, hardening features, share exposure, account hygiene.
+def scan_vuln_assess_module() -> List[Dict]:
+    try:
+        import local_vuln_scanner
+
+        return local_vuln_scanner.scan_local_vulns()
+    except ImportError:
+        log("local_vuln_scanner module missing")
+        return []
+    except Exception as e:
+        log(f"Local vuln assessment error: {e}")
+        return []
+
+
 # ── Entry point ───────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="WRAITH Scanner")
@@ -727,6 +743,8 @@ def main():
             findings = scan_tor_module()
         elif mode == "intel":
             findings = scan_intel_module()
+        elif mode == "vuln_assess":
+            findings = scan_vuln_assess_module()
         elif mode == "all":
             findings += scan_persistence(scan_path)
             findings += scan_yara(scan_path, rules_dir)
@@ -745,6 +763,7 @@ def main():
             findings += scan_vuln_drivers_module()
             findings += scan_tor_module()
             findings += scan_intel_module()
+            findings += scan_vuln_assess_module()
         else:
             error = f"Unknown mode: {mode}"
     except Exception as e:

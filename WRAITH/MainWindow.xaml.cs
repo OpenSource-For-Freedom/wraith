@@ -370,9 +370,34 @@ public partial class MainWindow : Window
 
     private void ShowTrayResult(bool ok, string message)
     {
+        // NotifyIcon.ShowBalloonTip is silently swallowed on Win 10/11 when
+        // Focus Assist is on, when the app hasn't been granted toast
+        // permission, or when the user has notifications muted for the
+        // tray channel — the user clicks the menu item, the work runs,
+        // and they see nothing. A WPF MessageBox always pops a real window,
+        // so we use it as the authoritative feedback path and keep the
+        // balloon tip as a secondary signal for users who prefer the
+        // less-intrusive form when notifications ARE enabled.
         try
         {
-            _trayIcon?.ShowBalloonTip(4000, "WRAITH", message, ok ? System.Windows.Forms.ToolTipIcon.Info : System.Windows.Forms.ToolTipIcon.Error);
+            _trayIcon?.ShowBalloonTip(4000, "WRAITH", message,
+                ok ? System.Windows.Forms.ToolTipIcon.Info : System.Windows.Forms.ToolTipIcon.Error);
+        }
+        catch { }
+
+        try
+        {
+            // Marshal onto the UI thread — tray click handlers run on the
+            // sync context but async-void resumes can land us on a worker.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                System.Windows.MessageBox.Show(
+                    message,
+                    ok ? "WRAITH" : "WRAITH — error",
+                    System.Windows.MessageBoxButton.OK,
+                    ok ? System.Windows.MessageBoxImage.Information
+                       : System.Windows.MessageBoxImage.Warning);
+            }));
         }
         catch { }
     }
