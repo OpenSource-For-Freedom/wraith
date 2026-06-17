@@ -8,7 +8,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) — vers
 
 ## [Unreleased]
 
-> Changes staged but not yet versioned.
+### Fixed
+- **Remote auto-update was silently broken** — CI installed the Velopack `vpk` CLI unpinned (`dotnet tool install -g vpk`), so it pulled a newer version (1.2.0) than the `Velopack` library the app links (1.1.1) and packed release metadata the installed client couldn't read; `CheckForUpdatesAsync` returned "no update" every time. CI now pins `vpk --version 1.1.1` to match the library, with a comment to keep the two in lockstep. (`.github/workflows/deploy.yml`)
+- **DigitalSide threat-intel feeds showed "Error / Never"** — the self-hosted origin `osint.digitalside.it` stops accepting HTTPS connections when it goes offline (a connection timeout, not the 403/User-Agent issue the old code assumed). All five DigitalSide feeds now pull from the project's CDN-backed GitHub mirror (`davidonzo/Threat-Intel`) and fall back to the origin only if the mirror is unreachable. (`WRAITH/Services/FeedRefreshService.cs`, `scanner/digitalside_intel.py`)
+
+### Added
+- **Real-time monitoring** — an opt-in watcher (`RealtimeMonitorService`) tails the per-user and all-users Startup folders and raises a High-severity finding the instant a file is dropped or modified there, instead of only at the next full scan. Toggle from the new **Protection** panel. Duplicate filesystem events are debounced per path. (`WRAITH/Services/RealtimeMonitorService.cs`)
+- **One-glance protection status** — a Malwarebytes-style banner (`ProtectionStatusEvaluator`) collapses scan state, critical/high counts, feed freshness, and real-time on/off into a single verdict: *Scanning / At Risk / Needs Attention / Protected / Not scanned*. (`WRAITH/Services/ProtectionStatusEvaluator.cs`)
+- **Feed self-test** — `FeedRefreshService.GetFeedHealth()` reports each feed as Ok / Stale (>24h) / Missing from the manifest, feeding the protection banner's "intel feeds need refreshing" recommendation.
+- **In-app "Check for Updates"** — manual update check from the Protection panel; `UpdateService.CheckForUpdatesAsync` now returns an outcome (`UpToDate` / `UpdateReady` / `PortableUpdateAvailable` / `Failed`) so the UI can confirm "you're up to date" or point at the update log on failure.
+- **Per-feed fallback URLs** — `FeedSource` now carries an optional `FallbackUrl`; a feed is only reported failed when both primary and fallback are unreachable, so a single dead origin no longer strands a feed. The manifest records which source actually served the bytes.
+- **Quarantine vault lockdown** — the vault directory is hardened to SYSTEM/Administrators-only (inheritance stripped), and every quarantined entry is marked read-only with an explicit deny-execute ACE so a captured payload can never be read by standard users or executed from the vault. (`WRAITH/Services/QuarantineService.cs`)
+- **Force-delete for locked / in-use files** — a "Force Delete File" action on a finding terminates the processes locking the file (via the Windows Restart Manager), with a hard denylist that prevents killing OS-critical processes (`lsass`, `csrss`, etc.), then deletes it — falling back to delete-on-reboot when the lock can't be broken. (`WRAITH/Services/LockedFileDeleter.cs`)
+
+### Changed
+- The release page now leads with **`WRAITH-win-Setup.exe`** (the only build that can self-update); the portable ZIP is documented as the no-auto-update option for air-gapped / forensic use.
+
+### Changed
+- DigitalSide's separate `latestmd5.txt` / `latestsha256.txt` lists were consolidated into the mirror's single `latesthashes.json` lookup; `digitalside_intel.py` parses it into both hash sets and still reads the legacy plain-text files when present.
 
 ---
 

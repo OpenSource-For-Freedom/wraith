@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.IO;
@@ -47,9 +48,93 @@ public sealed class QuarantineService
         _vaultDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WRAITH", "Quarantine");
         _indexFile = Path.Combine(_vaultDir, "quarantine-index.json");
         Directory.CreateDirectory(_vaultDir);
+        HardenVaultDirectory();
     }
 
     public string VaultDirectory => _vaultDir;
+
+    /// <summary>
+    /// Locks the vault down so quarantined malware can't be read or executed by
+    /// standard users, and can't run even if someone navigates into the folder.
+    /// Strips inherited permissions and grants ONLY SYSTEM and Administrators
+    /// full control; everyone else loses all access. New files created inside
+    /// inherit this restricted set. Best-effort — a vault that can't be ACL'd
+    /// (non-NTFS, odd policy) still works, it's just not hardened.
+    /// </summary>
+    private void HardenVaultDirectory()
+    {
+        try
+        {
+            var system = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+            var admins = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
+
+            var sec = new DirectorySecurity();
+            // Protect from inheritance and drop any inherited ACEs (e.g. the
+            // Users:Read that ProgramData grants by default).
+            sec.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+            sec.SetOwner(admins);
+
+            const InheritanceFlags inherit = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+            sec.AddAccessRule(new FileSystemAccessRule(system, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+            sec.AddAccessRule(new FileSystemAccessRule(admins, FileSystemRights.FullControl, inherit, PropagationFlags.None, AccessControlType.Allow));
+
+            new DirectoryInfo(_vaultDir).SetAccessControl(sec);
+        }
+        catch
+        {
+            // Hardening is defence-in-depth; never let it stop the vault working.
+        }
+    }
+
+    /// <summary>
+    /// Marks a vaulted entry read-only and denies execution. The vault dir ACL
+    /// already restricts access to SYSTEM/Administrators; this adds an explicit
+    /// per-file "no execute" so a quarantined PE can never be launched from the
+    /// vault, plus the ReadOnly attribute as a casual-tamper guard.
+    /// </summary>
+    private static void LockDownEntry(string path)
+    {
+        try
+        {
+            var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+            var fi = new FileInfo(path);
+            var sec = fi.GetAccessControl();
+            // Deny ACEs win over Allow, so this blocks execution for ALL principals
+            // (we only ever read/hash/restore vault files, never run them).
+            sec.AddAccessRule(new FileSystemAccessRule(
+                everyone, FileSystemRights.ExecuteFile, AccessControlType.Deny));
+            fi.SetAccessControl(sec);
+        }
+        catch { /* best-effort */ }
+
+        try
+        {
+            var attrs = File.GetAttributes(path);
+            File.SetAttributes(path, attrs | FileAttributes.ReadOnly);
+        }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>Clears the ReadOnly attribute so a hardened vault entry can be moved/deleted.</summary>
+    private static void ClearReadOnly(string path)
+    {
+        try
+        {
+            var attrs = File.GetAttributes(path);
+            if (attrs.HasFlag(FileAttributes.ReadOnly))
+                File.SetAttributes(path, attrs & ~FileAttributes.ReadOnly);
+        }
+        catch { /* best-effort */ }
+    }
+
+    /// <summary>
+    /// Force-deletes a file on disk even when it is locked by a running process —
+    /// terminating the (non-critical) holders first. Exposed so the UI's "delete"
+    /// action on a live malicious file, and the automated-response path, can both
+    /// remove something that's actively mapped into a process.
+    /// </summary>
+    public static ForceDeleteResult ForceDeleteOriginal(string path, bool killHolders = true)
+        => LockedFileDeleter.ForceDelete(path, killHolders);
 
     private static string NormalizeFullPath(string path)
     {
@@ -138,6 +223,10 @@ public sealed class QuarantineService
                     }
                 }
             }
+
+            // Harden the stored entry: read-only + no-execute so the quarantined
+            // payload can't be run from the vault.
+            LockDownEntry(dest);
 
             var rec = new QuarantineRecord
             {
@@ -302,6 +391,7 @@ public sealed class QuarantineService
             };
 
             File.WriteAllText(dest, JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true }));
+            LockDownEntry(dest);
 
             // Remove the value from the live registry only AFTER the export is durable.
             parentKey.DeleteValue(valueName, throwOnMissingValue: false);
@@ -479,6 +569,7 @@ public sealed class QuarantineService
                     Directory.Move(originalPath, target);
                 }
 
+                ClearReadOnly(quarantinedPath);
                 File.Delete(quarantinedPath);
                 restoredPath = target;
             }
@@ -494,7 +585,11 @@ public sealed class QuarantineService
 
                 target = NormalizeFullPath(target);
 
+                // Vault entries are marked ReadOnly on quarantine — clear it so
+                // the move (and the restored file) behave normally.
+                ClearReadOnly(quarantinedPath);
                 File.Move(quarantinedPath, target);
+                ClearReadOnly(target);
                 restoredPath = target;
             }
 
@@ -526,6 +621,8 @@ public sealed class QuarantineService
             if (!IsUnderRoot(quarantinedPath, _vaultDir) || !File.Exists(quarantinedPath))
                 return false;
 
+            // Entry was hardened to ReadOnly on quarantine — clear before delete.
+            ClearReadOnly(quarantinedPath);
             File.Delete(quarantinedPath);
 
             rec.Deleted = true;

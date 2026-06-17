@@ -16,7 +16,12 @@ public sealed record FeedSource(
     string SourceUrl,
     string LocalRelativePath,
     string Description,
-    bool IsBinary = false);
+    bool IsBinary = false,
+    // Optional secondary URL tried only when SourceUrl fails. Feeds whose
+    // primary origin is flaky (e.g. a self-hosted server that periodically
+    // goes offline) point this at a CDN-backed mirror so a single dead host
+    // doesn't strand the feed. Same on-disk format as SourceUrl.
+    string? FallbackUrl = null);
 
 /// <summary>Per-feed status persisted to feeds/manifest.json.</summary>
 public sealed class FeedStatus
@@ -62,40 +67,50 @@ public sealed class FeedRefreshService
             LocalRelativePath: "tor/exit_nodes.txt",
             Description:       "Active Tor exit relays (network reputation)."),
 
+        // ── DigitalSide OSINT ────────────────────────────────────────────────
+        // The self-hosted origin (osint.digitalside.it) periodically drops
+        // offline — its :443 listener stops accepting connections, so every
+        // pull times out and the feed pane shows "Error / Never" (this is what
+        // the previous URLs hit; it is NOT a User-Agent/403 issue). DigitalSide
+        // publishes the identical lists to a GitHub mirror that is CDN-fronted
+        // and effectively always up, so we pull from the mirror first and fall
+        // back to the origin only if the mirror itself is unreachable.
         new FeedSource(
             Id:                "digitalside_ips",
             DisplayName:       "DigitalSide malicious IPs",
-            SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestips.txt",
+            SourceUrl:         "https://raw.githubusercontent.com/davidonzo/Threat-Intel/master/lists/latestips.txt",
             LocalRelativePath: "digitalside/ips.txt",
-            Description:       "DigitalSide OSINT malicious IP feed."),
+            Description:       "DigitalSide OSINT malicious IP feed (GitHub mirror).",
+            FallbackUrl:       "https://osint.digitalside.it/Threat-Intel/lists/latestips.txt"),
 
         new FeedSource(
             Id:                "digitalside_domains",
             DisplayName:       "DigitalSide malicious domains",
-            SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestdomains.txt",
+            SourceUrl:         "https://raw.githubusercontent.com/davidonzo/Threat-Intel/master/lists/latestdomains.txt",
             LocalRelativePath: "digitalside/domains.txt",
-            Description:       "DigitalSide OSINT malicious domain feed."),
+            Description:       "DigitalSide OSINT malicious domain feed (GitHub mirror).",
+            FallbackUrl:       "https://osint.digitalside.it/Threat-Intel/lists/latestdomains.txt"),
 
         new FeedSource(
             Id:                "digitalside_urls",
             DisplayName:       "DigitalSide malicious URLs",
-            SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latesturls.txt",
+            SourceUrl:         "https://raw.githubusercontent.com/davidonzo/Threat-Intel/master/lists/latesturls.txt",
             LocalRelativePath: "digitalside/urls.txt",
-            Description:       "DigitalSide OSINT malicious URL feed."),
+            Description:       "DigitalSide OSINT malicious URL feed (GitHub mirror).",
+            FallbackUrl:       "https://osint.digitalside.it/Threat-Intel/lists/latesturls.txt"),
 
+        // The mirror ships hashes as a single JSON lookup table
+        // (md5/sha1/sha256 per sample) rather than the origin's separate plain
+        // md5/sha256 lists — so this one feed replaces the old _sha256/_md5
+        // pair. digitalside_intel.py parses the JSON into both hash sets, and
+        // still reads the legacy plain files when present (origin format / unit
+        // test fixtures).
         new FeedSource(
-            Id:                "digitalside_sha256",
-            DisplayName:       "DigitalSide malware SHA256",
-            SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestsha256.txt",
-            LocalRelativePath: "digitalside/hashes_sha256.txt",
-            Description:       "DigitalSide OSINT malware SHA256 hashes."),
-
-        new FeedSource(
-            Id:                "digitalside_md5",
-            DisplayName:       "DigitalSide malware MD5",
-            SourceUrl:         "https://osint.digitalside.it/Threat-Intel/lists/latestmd5.txt",
-            LocalRelativePath: "digitalside/hashes_md5.txt",
-            Description:       "DigitalSide OSINT malware MD5 hashes."),
+            Id:                "digitalside_hashes",
+            DisplayName:       "DigitalSide malware hashes",
+            SourceUrl:         "https://raw.githubusercontent.com/davidonzo/Threat-Intel/master/lists/latesthashes.json",
+            LocalRelativePath: "digitalside/hashes.json",
+            Description:       "DigitalSide OSINT malware hash lookup — md5 + sha256 (GitHub mirror)."),
 
         // ── abuse.ch feeds ──────────────────────────────────────────────────
         new FeedSource(
@@ -253,14 +268,36 @@ public sealed class FeedRefreshService
             // scanners would happily read.
             var tmp = GatedFeedPath(destPath + ".tmp");
 
-            using (var resp = await _http.GetAsync(source.SourceUrl,
-                                                   HttpCompletionOption.ResponseHeadersRead, ct))
+            // Try the primary URL, then the fallback (if any). A feed only counts
+            // as failed when BOTH are unreachable — so a dead origin no longer
+            // strands a feed that has a live mirror.
+            var urls = string.IsNullOrWhiteSpace(source.FallbackUrl)
+                ? new[] { source.SourceUrl }
+                : new[] { source.SourceUrl, source.FallbackUrl! };
+
+            Exception? lastError = null;
+            string? usedUrl = null;
+            foreach (var url in urls)
             {
-                resp.EnsureSuccessStatusCode();
-                await using var src = await resp.Content.ReadAsStreamAsync(ct);
-                await using var dst = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None);
-                await src.CopyToAsync(dst, ct);
+                try
+                {
+                    using var resp = await _http.GetAsync(url,
+                                                          HttpCompletionOption.ResponseHeadersRead, ct);
+                    resp.EnsureSuccessStatusCode();
+                    await using var src = await resp.Content.ReadAsStreamAsync(ct);
+                    await using var dst = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await src.CopyToAsync(dst, ct);
+                    usedUrl = url;
+                    break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    lastError = ex;
+                }
             }
+
+            if (usedUrl == null)
+                throw lastError ?? new HttpRequestException($"All sources unreachable for {source.Id}");
 
             if (File.Exists(destPath))
                 File.Replace(tmp, destPath, destinationBackupFileName: null);
@@ -272,6 +309,9 @@ public sealed class FeedRefreshService
             status.LastRefreshUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
             status.Status         = "ok";
             status.Error          = null;
+            // Record which source actually served the bytes so the manifest /
+            // feed pane shows the mirror when the origin was skipped.
+            status.SourceUrl      = usedUrl;
         }
         catch (Exception ex)
         {
@@ -281,6 +321,66 @@ public sealed class FeedRefreshService
 
         return status;
     }
+
+    // ── Feed health / self-test ──────────────────────────────────────────────
+
+    /// <summary>Per-feed reachability/freshness verdict for the pre-scan self-test.</summary>
+    public enum FeedHealth { Ok, Stale, Missing }
+
+    public sealed record FeedHealthReport(
+        string Id, string DisplayName, FeedHealth Health, string? LastRefreshUtc, string? Error);
+
+    /// <summary>
+    /// Pure evaluation of feed health from a manifest snapshot — no I/O, so it's
+    /// directly unit-testable. A feed is Missing when it never refreshed or last
+    /// errored, Stale when its last good refresh is older than <paramref name="staleAfter"/>,
+    /// and Ok otherwise.
+    /// </summary>
+    public static IReadOnlyList<FeedHealthReport> EvaluateHealth(
+        IReadOnlyList<FeedSource> sources,
+        IReadOnlyDictionary<string, FeedStatus> manifest,
+        DateTime nowUtc,
+        TimeSpan staleAfter)
+    {
+        var reports = new List<FeedHealthReport>(sources.Count);
+        foreach (var s in sources)
+        {
+            manifest.TryGetValue(s.Id, out var st);
+
+            FeedHealth health;
+            if (st == null || !string.Equals(st.Status, "ok", StringComparison.OrdinalIgnoreCase)
+                           || string.IsNullOrWhiteSpace(st.LastRefreshUtc))
+            {
+                health = FeedHealth.Missing;
+            }
+            else if (TryParseUtc(st.LastRefreshUtc, out var refreshed)
+                     && nowUtc - refreshed > staleAfter)
+            {
+                health = FeedHealth.Stale;
+            }
+            else
+            {
+                health = FeedHealth.Ok;
+            }
+
+            reports.Add(new FeedHealthReport(s.Id, s.DisplayName, health, st?.LastRefreshUtc, st?.Error));
+        }
+        return reports;
+    }
+
+    /// <summary>
+    /// Live health of every bundled feed, read from the on-disk manifest.
+    /// Feeds default to stale after 24h. Used to warn the user before a scan
+    /// that some intel is missing or out of date.
+    /// </summary>
+    public IReadOnlyList<FeedHealthReport> GetFeedHealth(TimeSpan? staleAfter = null) =>
+        EvaluateHealth(Sources, LoadManifest(), DateTime.UtcNow,
+                       staleAfter ?? TimeSpan.FromHours(24));
+
+    private static bool TryParseUtc(string value, out DateTime utc) =>
+        DateTime.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+            out utc);
 
     /// <summary>Reads manifest.json, returning an empty dict if missing or corrupt.</summary>
     public static Dictionary<string, FeedStatus> LoadManifest()

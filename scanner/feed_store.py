@@ -9,11 +9,12 @@ the scanners and the C# downloader agree on where each feed lives.
 Layout:
     feeds/
         manifest.json
-        vuln_drivers/driver_blocklist.xml
+        vuln_drivers/loldrivers.json
         tor/exit_nodes.txt
-        digitalside/hashes.txt
         digitalside/ips.txt
+        digitalside/domains.txt
         digitalside/urls.txt
+        digitalside/hashes.json
         sigma/rules/
 """
 

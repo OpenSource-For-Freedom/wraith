@@ -9,11 +9,12 @@ the scanners and the C# downloader agree on where each feed lives.
 Layout:
     feeds/
         manifest.json
-        vuln_drivers/driver_blocklist.xml
+        vuln_drivers/loldrivers.json
         tor/exit_nodes.txt
-        digitalside/hashes.txt
         digitalside/ips.txt
+        digitalside/domains.txt
         digitalside/urls.txt
+        digitalside/hashes.json
         sigma/rules/
 """
 
@@ -158,16 +159,16 @@ def read_lines(path: Path, *, strip_comments: bool = True) -> list[str]:
 
 # Canonical feed IDs used by both the C# downloader and the Python scanners.
 # Keep in sync with WRAITH/Services/FeedRefreshService.cs.
-FEED_VULN_DRIVERS  = "vuln_drivers"
-FEED_TOR           = "tor"
-FEED_DIGITALSIDE   = "digitalside"
-FEED_SIGMA         = "sigma"
-FEED_URLHAUS       = "urlhaus"
-FEED_FEODO         = "feodo"
-FEED_IPSUM         = "ipsum"
+FEED_VULN_DRIVERS = "vuln_drivers"
+FEED_TOR = "tor"
+FEED_DIGITALSIDE = "digitalside"
+FEED_SIGMA = "sigma"
+FEED_URLHAUS = "urlhaus"
+FEED_FEODO = "feodo"
+FEED_IPSUM = "ipsum"
 FEED_ET_COMPROMISED = "et_compromised"
-FEED_OPENPHISH     = "openphish"
-FEED_BOTVRIJ       = "botvrij_domains"
+FEED_OPENPHISH = "openphish"
+FEED_BOTVRIJ = "botvrij_domains"
 
 
 def _public_api() -> list[str]:

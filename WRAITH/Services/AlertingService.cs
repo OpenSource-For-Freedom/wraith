@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using WRAITH.Models;
 
@@ -55,7 +56,10 @@ public sealed class AlertingService
     private const string AvatarUrl = "https://raw.githubusercontent.com/OpenSource-For-Freedom/wraith/main/WRAITH/Assets/wraith.png";
     private const string Footer    = "WRAITH · Windows Runtime Analysis & Intrusion Threat Hunter";
 
-    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(12) };
+    // Do not reuse a static HttpClient for webhook POSTs — a fresh instance
+    // per call avoids stale connection state that can cause silent 400s.
+    private static HttpClient MakeWebhookClient() =>
+        new() { Timeout = TimeSpan.FromSeconds(15) };
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -68,9 +72,6 @@ public sealed class AlertingService
         if (!policy.SlackWebhookUrl.StartsWith("https://hooks.slack.com/", StringComparison.OrdinalIgnoreCase))
             return (false, "Invalid Slack webhook URL. It should start with https://hooks.slack.com/");
 
-        if (!(result.Summary.Critical > 0 || (policy.SlackNotifyOnHigh && result.Summary.High > 0)))
-            return (false, "No Critical/High findings requiring Slack alert");
-
         var payload = BuildSlackPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.SlackWebhookUrl, payload, "Slack", ct);
     }
@@ -79,14 +80,14 @@ public sealed class AlertingService
         ScanResult result, AutomatedResponseReport soar, string scanPath,
         ResponsePolicy policy, CancellationToken ct = default)
     {
-        if (!policy.EnableDiscordWebhook)         return (false, "Discord webhook is disabled in policy");
-        if (string.IsNullOrWhiteSpace(policy.DiscordWebhookUrl)) return (false, "Discord webhook URL is empty");
+        // Diagnostics: always surface the exact gate that blocks the send.
+        if (!policy.EnableDiscordWebhook)
+            return (false, $"Discord webhook is disabled in policy (URL={policy.DiscordWebhookUrl?.Length > 0})");
+        if (string.IsNullOrWhiteSpace(policy.DiscordWebhookUrl))
+            return (false, "Discord webhook URL is empty in policy");
         if (!policy.DiscordWebhookUrl.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) &&
             !policy.DiscordWebhookUrl.StartsWith("https://discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
-            return (false, "Invalid Discord webhook URL. Go to Server Settings → Integrations → Webhooks to copy the correct URL (starts with https://discord.com/api/webhooks/)");
-
-        if (!(result.Summary.Critical > 0 || (policy.DiscordNotifyOnHigh && result.Summary.High > 0)))
-            return (false, "No Critical/High findings requiring Discord alert");
+            return (false, $"Invalid Discord webhook URL (got: {policy.DiscordWebhookUrl[..Math.Min(60, policy.DiscordWebhookUrl.Length)]}…). Must start with https://discord.com/api/webhooks/");
 
         var payload = BuildDiscordPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.DiscordWebhookUrl, payload, "Discord", ct);
@@ -116,33 +117,42 @@ public sealed class AlertingService
             $"**Risk Index:** {impact.RiskIndex}/100  ·  **Confidence:** {impact.ConfidencePercent}%\n\n" +
             Trim(impact.RecommendedActions, 350);
 
-        var embed = new DiscordEmbed(
-            Title:       $"THREAT LEVEL: {level}",
-            Color:       color,
-            Description: $"Threat hunt completed on **{Trim(scanPath, 80)}** at **{result.Timestamp:yyyy-MM-dd HH:mm}**",
-            Fields: new[]
+        // All fields must share IDENTICAL anonymous-type shape so C# infers a
+        // typed array (new[]) rather than object[] — object[] causes STJ to
+        // serialize every element as {} at runtime.
+        var fields = new[]
+        {
+            new { name = "Critical", value = $"**{result.Summary.Critical}**",         inline = true  },
+            new { name = "High",     value = $"**{result.Summary.High}**",             inline = true  },
+            new { name = "Medium",   value = $"**{result.Summary.Medium}**",           inline = true  },
+            new { name = "Low",      value = $"**{result.Summary.Low}**",              inline = true  },
+            new { name = "Info",     value = $"**{result.Summary.Info}**",             inline = true  },
+            new { name = "\u200b",   value = "\u200b",                                 inline = true  },
+            new { name = "Alert Matrix",                   value = SafeField(summaryTable,    1024), inline = false },
+            new { name = "Top Findings (Critical / High)", value = SafeField(findingsList,    1024), inline = false },
+            new { name = "Response Summary",               value = SafeField(responseSummary, 1024), inline = false },
+        };
+
+        // Use JsonSerializer.Serialize with fully-typed anonymous types —
+        // the same pattern the working test webhook uses.
+        // No avatar_url or icon_url — those point to GitHub raw which Discord
+        // validates at POST time and rejects if unreachable.
+        return JsonSerializer.Serialize(new
+        {
+            username = "WRAITH",
+            embeds   = new[]
             {
-                new DiscordField("Critical", $"**{result.Summary.Critical}**", Inline: true),
-                new DiscordField("High",     $"**{result.Summary.High}**",     Inline: true),
-                new DiscordField("Medium",   $"**{result.Summary.Medium}**",   Inline: true),
-                new DiscordField("Low",      $"**{result.Summary.Low}**",      Inline: true),
-                new DiscordField("Info",     $"**{result.Summary.Info}**",     Inline: true),
-                new DiscordField("\u200b",   "\u200b",                         Inline: true),
-                new DiscordField("Alert Matrix",                    Trim(summaryTable,    1024), Inline: false),
-                new DiscordField("Top Findings (Critical / High)",  Trim(findingsList,   1024), Inline: false),
-                new DiscordField("Response Summary",                Trim(responseSummary, 1024), Inline: false),
-            },
-            Footer:    new DiscordFooter(Footer, AvatarUrl),
-            Timestamp: ts
-        );
-
-        var payload = new DiscordPayload(
-            Username:  "WRAITH",
-            AvatarUrl: AvatarUrl,
-            Embeds:    new[] { embed }
-        );
-
-        return JsonSerializer.Serialize(payload);
+                new
+                {
+                    title       = $"THREAT LEVEL: {level}",
+                    color,
+                    description = $"Threat hunt completed on **{Trim(scanPath, 80)}** at **{result.Timestamp:yyyy-MM-dd HH:mm}**",
+                    fields,
+                    footer      = new { text = Footer },
+                    timestamp   = ts,
+                }
+            }
+        });
     }
 
     // ── Slack — Block Kit ───────────────────────────────────────────────────────
@@ -238,14 +248,15 @@ public sealed class AlertingService
         var leftWidth = Math.Max("METRIC".Length, rows.Max(r => r.Item1.Length));
         var rightWidth = Math.Max("VALUE".Length, rows.Max(r => r.Item2.Length));
 
+        // Use \n not AppendLine (\r\n) — Discord rejects \r\n in embed field values.
         var sb = new StringBuilder();
-        sb.AppendLine("```text");
-        sb.AppendLine($"+{new string('-', leftWidth + 2)}+{new string('-', rightWidth + 2)}+");
-        sb.AppendLine($"| {PadRight("METRIC", leftWidth)} | {PadRight("VALUE", rightWidth)} |");
-        sb.AppendLine($"+{new string('=', leftWidth + 2)}+{new string('=', rightWidth + 2)}+");
+        sb.Append("```text\n");
+        sb.Append($"+{new string('-', leftWidth + 2)}+{new string('-', rightWidth + 2)}+\n");
+        sb.Append($"| {PadRight("METRIC", leftWidth)} | {PadRight("VALUE", rightWidth)} |\n");
+        sb.Append($"+{new string('=', leftWidth + 2)}+{new string('=', rightWidth + 2)}+\n");
         foreach (var row in rows)
-            sb.AppendLine($"| {PadRight(row.Item1, leftWidth)} | {PadRight(row.Item2, rightWidth)} |");
-        sb.AppendLine($"+{new string('-', leftWidth + 2)}+{new string('-', rightWidth + 2)}+");
+            sb.Append($"| {PadRight(row.Item1, leftWidth)} | {PadRight(row.Item2, rightWidth)} |\n");
+        sb.Append($"+{new string('-', leftWidth + 2)}+{new string('-', rightWidth + 2)}+\n");
         sb.Append("```");
         return sb.ToString();
     }
@@ -282,7 +293,7 @@ public sealed class AlertingService
                 $"{PadRight(Trim(target, targetWidth), targetWidth)} |");
         }
 
-        sb.AppendLine($"+{new string('-', sevWidth + 2)}+{new string('-', catWidth + 2)}+{new string('-', titleWidth + 2)}+{new string('-', targetWidth + 2)}+");
+        sb.Append($"+{new string('-', sevWidth + 2)}+{new string('-', catWidth + 2)}+{new string('-', titleWidth + 2)}+{new string('-', targetWidth + 2)}+\n");
         sb.Append("```");
         return sb.ToString();
     }
@@ -299,11 +310,11 @@ public sealed class AlertingService
                 ? f.Path
                 : string.IsNullOrWhiteSpace(f.Package) ? "n/a" : f.Package;
             var category = string.IsNullOrWhiteSpace(f.Category) ? "unknown" : f.Category;
-            sb.AppendLine($"**[{f.SeverityLabel}]** {Trim(f.Title, 50)}  ·  `{Trim(category, 14)}`");
-            sb.AppendLine($"> `{Trim(target, 70)}`");
+            sb.Append($"**[{f.SeverityLabel}]** {Trim(f.Title, 50)}  ·  `{Trim(category, 14)}`\n");
+            sb.Append($"> `{Trim(target, 70)}`\n");
         }
         if (totalCount > findings.Count)
-            sb.AppendLine($"_… and {totalCount - findings.Count} more. Export full report for complete listing._");
+            sb.Append($"_… and {totalCount - findings.Count} more. Export full report for complete listing._");
         return sb.ToString().TrimEnd();
     }
 
@@ -506,36 +517,72 @@ public sealed class AlertingService
         return v.Length <= max ? v : v[..max] + "…";
     }
 
+    /// Discord hard-limits field values to 1024 chars.
+    /// Truncate at 1023 so the appended ellipsis keeps total ≤ 1024.
+    /// Also strip \r to avoid Discord rejecting \r\n line endings.
+    private static string SafeField(string? value, int max)
+    {
+        var v = (value ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+        if (v.Length <= max - 1) return v.Length > 0 ? v : "\u200b";
+        return v[..(max - 1)] + "…";
+    }
+
+    // Debug log path — written next to the exe so it's always easy to find.
+    private static readonly string _debugLog = System.IO.Path.Combine(
+        AppContext.BaseDirectory, "wraith_webhook_debug.log");
+
+    private static void WebhookLog(string line)
+    {
+        try
+        {
+            var entry = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {line}{Environment.NewLine}";
+            System.IO.File.AppendAllText(_debugLog, entry);
+        }
+        catch { /* never crash the app over logging */ }
+    }
+
     private static async Task<(bool sent, string message)> PostWebhookAsync(
         string url, string payload, string channelName, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new StringContent(payload, Encoding.UTF8, "application/json")
-        };
+        // Append ?wait=true so Discord returns the full error body
+        var postUrl = url.Contains('?') ? url + "&wait=true" : url + "?wait=true";
+
+        WebhookLog($"=== {channelName} POST ===");
+        WebhookLog($"URL  : {url[..Math.Min(80, url.Length)]}");
+        WebhookLog($"LEN  : {payload.Length} bytes");
+        WebhookLog($"BODY : {payload}");
 
         try
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            linked.CancelAfter(TimeSpan.FromSeconds(15));
+            using var http = MakeWebhookClient();
+            using var req  = new HttpRequestMessage(HttpMethod.Post, postUrl)
+            {
+                Content = new StringContent(payload, Encoding.UTF8, "application/json")
+            };
 
-            using var res = await _http.SendAsync(req, linked.Token);
+            using var res = await http.SendAsync(req, ct);
+            var body = await res.Content.ReadAsStringAsync(CancellationToken.None);
+
+            WebhookLog($"HTTP : {(int)res.StatusCode} {res.ReasonPhrase}");
+            WebhookLog($"RESP : {body}");
+
             if (!res.IsSuccessStatusCode)
             {
-                var body = await res.Content.ReadAsStringAsync(CancellationToken.None);
-                // Truncate body — Discord error responses can be verbose
-                var detail = string.IsNullOrWhiteSpace(body) ? string.Empty : $" — {body[..Math.Min(300, body.Length)]}";
+                var detail = string.IsNullOrWhiteSpace(body) ? string.Empty : $" — {body[..Math.Min(400, body.Length)]}";
                 return (false, $"{channelName} HTTP {(int)res.StatusCode}{detail}");
             }
 
+            WebhookLog("OK");
             return (true, $"{channelName} alert sent");
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            return (false, $"{channelName} POST timed out after 15 s");
+            WebhookLog("CANCELLED");
+            return (false, $"{channelName} POST timed out or cancelled");
         }
         catch (Exception ex)
         {
+            WebhookLog($"EXCEPTION: {ex}");
             return (false, $"{channelName} POST failed: {ex.Message}");
         }
     }

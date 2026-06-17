@@ -257,4 +257,66 @@ public sealed class QuarantineServiceTests : IDisposable
         Assert.True(clone!.IsDirectory);
         Assert.False(clone.IsRegistry);
     }
+
+    // ── Vault lockdown ──────────────────────────────────────────────────
+
+    [Fact]
+    public void QuarantineFile_marks_vault_entry_readonly()
+    {
+        var src = TempChild("locked.exe");
+        File.WriteAllText(src, "payload");
+        var rec = _svc.QuarantineFile(src, "test", "CRITICAL");
+
+        var attrs = File.GetAttributes(rec.QuarantinedPath);
+        Assert.True(attrs.HasFlag(FileAttributes.ReadOnly),
+            "vaulted payload should be hardened read-only so it can't be casually run/altered");
+    }
+
+    [Fact]
+    public void DeleteFromVault_succeeds_even_though_entry_is_readonly()
+    {
+        var src = TempChild("ro.bin");
+        File.WriteAllText(src, "x");
+        var rec = _svc.QuarantineFile(src, "test");
+        Assert.True(File.GetAttributes(rec.QuarantinedPath).HasFlag(FileAttributes.ReadOnly));
+
+        // DeleteFromVault must clear ReadOnly before File.Delete or this throws.
+        Assert.True(_svc.DeleteFromVault(rec.Id, requireAdmin: false));
+        Assert.False(File.Exists(rec.QuarantinedPath));
+    }
+
+    // ── Force delete ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ForceDeleteOriginal_deletes_unlocked_file()
+    {
+        var src = TempChild("evil.exe");
+        File.WriteAllText(src, "evil");
+
+        var result = QuarantineService.ForceDeleteOriginal(src, killHolders: true);
+
+        Assert.Equal(ForceDeleteOutcome.Deleted, result.Outcome);
+        Assert.False(File.Exists(src));
+        Assert.Empty(result.KilledProcesses);
+    }
+
+    [Fact]
+    public void ForceDeleteOriginal_reports_NotFound_for_missing_file()
+    {
+        var result = QuarantineService.ForceDeleteOriginal(TempChild("ghost.exe"));
+        Assert.Equal(ForceDeleteOutcome.NotFound, result.Outcome);
+    }
+
+    [Fact]
+    public void ForceDeleteOriginal_deletes_readonly_file()
+    {
+        var src = TempChild("readonly.exe");
+        File.WriteAllText(src, "x");
+        File.SetAttributes(src, File.GetAttributes(src) | FileAttributes.ReadOnly);
+
+        var result = QuarantineService.ForceDeleteOriginal(src);
+
+        Assert.Equal(ForceDeleteOutcome.Deleted, result.Outcome);
+        Assert.False(File.Exists(src));
+    }
 }

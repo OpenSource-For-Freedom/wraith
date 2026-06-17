@@ -664,6 +664,7 @@ def scan_intel_module() -> List[Dict]:
         log(f"DigitalSide intel scan error: {e}")
         return []
 
+
 # ── Mode: vuln_assess ────────────────────────────────────────────────────────────────
 # Local Nessus-style vulnerability assessment — OS patch level, privesc
 # vectors, firewall, hardening features, share exposure, account hygiene.
@@ -678,6 +679,7 @@ def scan_vuln_assess_module() -> List[Dict]:
     except Exception as e:
         log(f"Local vuln assessment error: {e}")
         return []
+
 
 # ── Entry point ───────────────────────────────────────────────────────────
 def main():

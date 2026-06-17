@@ -1,6 +1,14 @@
-# ── Build outputs ────────────────────────────────────────────────────────────
-WRAITH/bin/
-WRAITH/obj/
+# ── Build outputs (recursive — covers WRAITH/, WRAITH.Tests/, any project) ───
+# Previously only WRAITH/bin|obj were ignored, so WRAITH.Tests/bin/** got
+# committed — including duplicate copies of scanner/*.py that CodeQL then
+# scanned, producing ~53 phantom path-injection alerts on generated files.
+[Bb]in/
+[Oo]bj/
+
+# ── Local build / submission scratch dirs (never committed) ──────────────────
+publish-local/
+publish-mf/
+fp-submission/
 
 # ── Python virtual environment ───────────────────────────────────────────────
 .venv/

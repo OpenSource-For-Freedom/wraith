@@ -123,13 +123,14 @@ def _get_scan_dirs() -> List[Path]:
 # ──────────────────────────────────────────────
 
 
-def _run_ps(cmd: str, timeout: int = 30) -> str:
+def _run_ps(cmd: str, timeout: int = 30, env: "dict | None" = None) -> str:
     try:
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         return result.stdout.strip()
     except Exception:
@@ -142,15 +143,16 @@ def _get_ads_for_dir(directory: Path, recurse: bool = False) -> List[Dict]:
     a directory. Returns raw stream records.
     """
     depth = "-Recurse" if recurse else ""
-    # Limit depth to avoid slow traversal
+    # Pass directory via env var to avoid PowerShell injection.
     cmd = (
-        f"Get-ChildItem -Path '{directory}' {depth} -Force -ErrorAction SilentlyContinue "
-        f"| Get-Item -Stream * -ErrorAction SilentlyContinue "
-        f"| Where-Object {{$_.Stream -notin @(':$DATA')}} "
-        f"| Select-Object FileName, Stream, Length "
-        f"| ConvertTo-Json -Compress"
+        f"Get-ChildItem -Path $env:WRAITH_SCAN_DIR {depth} -Force -ErrorAction SilentlyContinue "
+        "| Get-Item -Stream * -ErrorAction SilentlyContinue "
+        "| Where-Object {$_.Stream -notin @(':$DATA')} "
+        "| Select-Object FileName, Stream, Length "
+        "| ConvertTo-Json -Compress"
     )
-    out = _run_ps(cmd, timeout=45)
+    env = {**os.environ, "WRAITH_SCAN_DIR": str(directory)}
+    out = _run_ps(cmd, timeout=45, env=env)
     if not out:
         return []
     try:
@@ -169,12 +171,15 @@ def _is_pe_header(data: bytes) -> bool:
 
 def _read_stream_bytes(filepath: str, stream: str, max_bytes: int = 512) -> bytes:
     """Read first max_bytes of an NTFS ADS via PowerShell."""
+    # Pass filepath and stream via env vars to avoid PowerShell injection.
     cmd = (
-        f"$b = Get-Content -Path '{filepath}:{stream}' -Encoding Byte "
+        "$fp = $env:WRAITH_FILEPATH; $st = $env:WRAITH_STREAM; "
+        f'$b = Get-Content -Path "${{fp}}:${{st}}" -Encoding Byte '
         f"-ReadCount 0 -TotalCount {max_bytes} -ErrorAction SilentlyContinue; "
-        f"[System.Convert]::ToBase64String($b)"
+        "[System.Convert]::ToBase64String($b)"
     )
-    b64 = _run_ps(cmd).strip()
+    env = {**os.environ, "WRAITH_FILEPATH": filepath, "WRAITH_STREAM": stream}
+    b64 = _run_ps(cmd, env=env).strip()
     if not b64:
         return b""
     try:
@@ -368,9 +373,10 @@ def check_directory_ads() -> List[Dict]:
         os.environ.get("TEMP", ""),
     ]
 
-    cmd_template = (
-        "Get-Item -Path '{path}' -Stream * -ErrorAction SilentlyContinue "
-        "| Where-Object {{$_.Stream -ne ':$DATA'}} "
+    # Pass each directory via env var to avoid PowerShell injection.
+    cmd = (
+        "Get-Item -Path $env:WRAITH_ADS_DIR -Stream * -ErrorAction SilentlyContinue "
+        "| Where-Object {$_.Stream -ne ':$DATA'} "
         "| Select-Object FileName, Stream, Length "
         "| ConvertTo-Json -Compress"
     )
@@ -378,7 +384,8 @@ def check_directory_ads() -> List[Dict]:
     for dpath in SUSPICIOUS_DIRS:
         if not dpath or not Path(dpath).exists():
             continue
-        out = _run_ps(cmd_template.format(path=dpath), timeout=15)
+        env = {**os.environ, "WRAITH_ADS_DIR": dpath}
+        out = _run_ps(cmd, timeout=15, env=env)
         if not out:
             continue
         try:
