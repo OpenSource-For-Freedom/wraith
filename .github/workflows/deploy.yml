@@ -27,6 +27,15 @@ name: Deploy
 on:
   push:
     branches: [ main ]
+    # Doc-only commits don't change anything that ships — skip the build,
+    # save the runner minutes, and keep the patch number from ticking up
+    # for a README typo fix. The tags trigger below is intentionally
+    # unrestricted: an explicit `git tag vX.Y.Z && git push` should
+    # always cut a release regardless of which files changed.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
     tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 permissions:
@@ -208,7 +217,7 @@ jobs:
       # the job before artefacts hit GitHub Releases.
 
       - name: Setup Python (for pytest)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -593,6 +602,19 @@ jobs:
             exit 0
           fi
 
+          # Mask-safe presence check — the secret value never leaves the
+          # masked env, but we can log a fingerprint (length + tail char
+          # class) so the operator can tell from the log whether the
+          # secret actually arrived populated, vs. arrived as the literal
+          # string "***" from a misconfigured re-export.
+          webhook_len=${#WEBHOOK}
+          echo "DISCORD_ALERT present (len=$webhook_len)"
+          case "$WEBHOOK" in
+            https://discord.com/api/webhooks/*) echo "Webhook host: discord.com (ok)" ;;
+            https://discordapp.com/api/webhooks/*) echo "Webhook host: discordapp.com (legacy ok)" ;;
+            *) echo "::warning::DISCORD_ALERT does not start with https://discord.com/api/webhooks/ — the POST will fail. Re-create the webhook in Discord and update the repo secret." ;;
+          esac
+
           # Compact commit list — last 5 first-parent commits, one per line.
           # Discord embed field caps at 1024 chars; trim defensively.
           commits=$(git log -5 --first-parent --pretty=format:'• `%h` %s' | head -c 900)
@@ -619,13 +641,37 @@ jobs:
           print(json.dumps(payload))
           PY
 
-          # Best-effort POST. Two failure modes covered:
-          #  - DNS/network errors → curl exits non-zero on its own.
-          #  - HTTP error responses (429 rate-limit, 5xx) → without --fail,
-          #    curl -sS exits 0 on any HTTP status. --fail makes it exit
-          #    22 on >=400 so the warning branch actually runs.
-          # Either way, the release itself isn't affected; the catch-all
-          # `|| echo ::warning` keeps `set -euo pipefail` happy.
-          curl --fail -sS -X POST -H 'Content-Type: application/json' \
-               --data @payload.json "${WEBHOOK}" \
-            || echo "::warning::Discord notification POST failed (transient network, rate limit, or 5xx); release itself was not affected."
+          echo "Payload size: $(wc -c < payload.json) bytes"
+
+          # Explicit status capture instead of `curl --fail` silent-success.
+          # We were running blind: --fail + -sS produces zero output on 2xx,
+          # which made it impossible to tell whether the webhook was being
+          # rejected upstream (Discord deletes webhooks that have been
+          # invalidated, but the URL keeps responding 401/404) or actually
+          # delivering. -w "%{http_code}" lands the HTTP code in stdout
+          # where we can inspect it; the response body goes to a tmp file
+          # so a 400/401/404 surfaces the reason Discord rejected the call.
+          resp_body=$(mktemp)
+          http_code=$(curl -sS -o "$resp_body" -w "%{http_code}" \
+                          -X POST -H 'Content-Type: application/json' \
+                          --data @payload.json "${WEBHOOK}" \
+                      || echo "000")
+
+          echo "Discord HTTP status: $http_code"
+          # Discord webhook success codes: 204 No Content (normal), 200 (?wait=true).
+          # Anything else is a real problem the operator needs to see.
+          case "$http_code" in
+            200|204)
+              echo "Discord notification delivered."
+              ;;
+            000)
+              echo "::warning::curl failed before getting an HTTP response — DNS, TLS, or connection refused. See curl output above."
+              ;;
+            *)
+              echo "::warning::Discord rejected the POST with HTTP $http_code"
+              echo "── Discord response body ──"
+              cat "$resp_body" || true
+              echo "── end response body ──"
+              ;;
+          esac
+          rm -f "$resp_body"
