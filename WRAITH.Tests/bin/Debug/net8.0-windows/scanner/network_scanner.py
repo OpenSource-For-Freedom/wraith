@@ -16,10 +16,16 @@ from typing import List, Dict, Any, Set
 
 try:
     from feed_store import (
-        FEED_FEODO, FEED_IPSUM, FEED_ET_COMPROMISED,
-        FEED_BOTVRIJ, FEED_URLHAUS, FEED_OPENPHISH,
-        feed_path, read_lines,
+        FEED_FEODO,
+        FEED_IPSUM,
+        FEED_ET_COMPROMISED,
+        FEED_BOTVRIJ,
+        FEED_URLHAUS,
+        FEED_OPENPHISH,
+        feed_path,
+        read_lines,
     )
+
     _FEEDS_AVAILABLE = True
 except ImportError:
     _FEEDS_AVAILABLE = False
@@ -678,12 +684,12 @@ def _load_text_feed(feed_id: str, filename: str) -> Set[str]:
 def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
     """Cross-reference active connections against downloaded threat-intel feeds."""
     # ── Load feed sets (degrade gracefully if any feed hasn't been downloaded) ──
-    feodo_ips   = _load_ip_feed(FEED_FEODO,          "c2_ips.txt")
-    ipsum_ips   = _load_ip_feed(FEED_IPSUM,           "ips.txt")
-    et_ips      = _load_ip_feed(FEED_ET_COMPROMISED,  "compromised_ips.txt")
-    botvrij     = _load_text_feed(FEED_BOTVRIJ,       "domains.txt")
-    urlhaus     = _load_text_feed(FEED_URLHAUS,       "urls.txt")
-    openphish   = _load_text_feed(FEED_OPENPHISH,     "urls.txt")
+    feodo_ips = _load_ip_feed(FEED_FEODO, "c2_ips.txt")
+    ipsum_ips = _load_ip_feed(FEED_IPSUM, "ips.txt")
+    et_ips = _load_ip_feed(FEED_ET_COMPROMISED, "compromised_ips.txt")
+    botvrij = _load_text_feed(FEED_BOTVRIJ, "domains.txt")
+    urlhaus = _load_text_feed(FEED_URLHAUS, "urls.txt")
+    openphish = _load_text_feed(FEED_OPENPHISH, "urls.txt")
 
     # IPsum includes scores — only flag IPs appearing in ≥3 lists (score token ≥ 3)
     ipsum_filtered: Set[str] = set()
@@ -706,11 +712,11 @@ def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
     seen: Set[str] = set()
 
     for conn in connections:
-        remote_ip   = str(conn.get("RemoteAddress", ""))
+        remote_ip = str(conn.get("RemoteAddress", ""))
         remote_port = int(conn.get("RemotePort", 0))
-        state       = str(conn.get("State", ""))
-        pid         = int(conn.get("OwningProcess", 0))
-        proc_name   = pid_map.get(pid, "unknown")
+        state = str(conn.get("State", ""))
+        pid = int(conn.get("OwningProcess", 0))
+        proc_name = pid_map.get(pid, "unknown")
 
         if state.lower() != "established" or not remote_ip or _is_private(remote_ip):
             continue
@@ -721,58 +727,71 @@ def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
 
         if remote_ip in feodo_ips:
             seen.add(key)
-            findings.append({
-                "title": f"Active Botnet C2 Connection: {proc_name} → {remote_ip}:{remote_port}",
-                "path": f"PID {pid} → {proc_name}",
-                "reason": (
-                    f"'{proc_name}' (PID {pid}) is connected to {remote_ip}:{remote_port}, "
-                    f"which is listed in the abuse.ch Feodo Tracker botnet C2 blocklist."
-                ),
-                "severity": "CRITICAL",
-                "category": "network",
-                "subcategory": "feed_c2_ip",
-                "pid": pid,
-            })
+            findings.append(
+                {
+                    "title": f"Active Botnet C2 Connection: {proc_name} → {remote_ip}:{remote_port}",
+                    "path": f"PID {pid} → {proc_name}",
+                    "reason": (
+                        f"'{proc_name}' (PID {pid}) is connected to {remote_ip}:{remote_port}, "
+                        f"which is listed in the abuse.ch Feodo Tracker botnet C2 blocklist."
+                    ),
+                    "severity": "CRITICAL",
+                    "category": "network",
+                    "subcategory": "feed_c2_ip",
+                    "pid": pid,
+                }
+            )
             continue
 
         if remote_ip in ipsum_filtered:
             seen.add(key)
-            findings.append({
-                "title": f"Known-Bad IP Connection: {proc_name} → {remote_ip}:{remote_port}",
-                "path": f"PID {pid} → {proc_name}",
-                "reason": (
-                    f"'{proc_name}' (PID {pid}) is connected to {remote_ip}, "
-                    f"which appears in 3 or more threat-intel block lists (IPsum aggregate)."
-                ),
-                "severity": "HIGH",
-                "category": "network",
-                "subcategory": "feed_ipsum_ip",
-                "pid": pid,
-            })
+            findings.append(
+                {
+                    "title": f"Known-Bad IP Connection: {proc_name} → {remote_ip}:{remote_port}",
+                    "path": f"PID {pid} → {proc_name}",
+                    "reason": (
+                        f"'{proc_name}' (PID {pid}) is connected to {remote_ip}, "
+                        f"which appears in 3 or more threat-intel block lists (IPsum aggregate)."
+                    ),
+                    "severity": "HIGH",
+                    "category": "network",
+                    "subcategory": "feed_ipsum_ip",
+                    "pid": pid,
+                }
+            )
             continue
 
         if remote_ip in et_ips:
             seen.add(key)
-            findings.append({
-                "title": f"Compromised Host Connection: {proc_name} → {remote_ip}:{remote_port}",
-                "path": f"PID {pid} → {proc_name}",
-                "reason": (
-                    f"'{proc_name}' (PID {pid}) is connected to {remote_ip}, "
-                    f"listed in the EmergingThreats compromised hosts blocklist."
-                ),
-                "severity": "HIGH",
-                "category": "network",
-                "subcategory": "feed_et_ip",
-                "pid": pid,
-            })
+            findings.append(
+                {
+                    "title": f"Compromised Host Connection: {proc_name} → {remote_ip}:{remote_port}",
+                    "path": f"PID {pid} → {proc_name}",
+                    "reason": (
+                        f"'{proc_name}' (PID {pid}) is connected to {remote_ip}, "
+                        f"listed in the EmergingThreats compromised hosts blocklist."
+                    ),
+                    "severity": "HIGH",
+                    "category": "network",
+                    "subcategory": "feed_et_ip",
+                    "pid": pid,
+                }
+            )
 
     # ── DNS cache correlation against Botvrij malicious domains ──────────────
     if botvrij:
         try:
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                 "Get-DnsClientCache | Select-Object -ExpandProperty Entry"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Get-DnsClientCache | Select-Object -ExpandProperty Entry",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             for entry in result.stdout.splitlines():
                 domain = entry.strip().lower().rstrip(".")
@@ -786,17 +805,19 @@ def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
                         key = f"dns:{domain}"
                         if key not in seen:
                             seen.add(key)
-                            findings.append({
-                                "title": f"DNS Cache: Malicious Domain {domain}",
-                                "path": domain,
-                                "reason": (
-                                    f"The domain '{domain}' (or a parent) was found in the DNS "
-                                    f"resolver cache and matches the Botvrij.eu malicious domain feed."
-                                ),
-                                "severity": "HIGH",
-                                "category": "network",
-                                "subcategory": "feed_malicious_domain",
-                            })
+                            findings.append(
+                                {
+                                    "title": f"DNS Cache: Malicious Domain {domain}",
+                                    "path": domain,
+                                    "reason": (
+                                        f"The domain '{domain}' (or a parent) was found in the DNS "
+                                        f"resolver cache and matches the Botvrij.eu malicious domain feed."
+                                    ),
+                                    "severity": "HIGH",
+                                    "category": "network",
+                                    "subcategory": "feed_malicious_domain",
+                                }
+                            )
                         break
         except Exception as e:
             log(f"Botvrij DNS correlation failed: {e}")
@@ -806,9 +827,16 @@ def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
     if combined_url_feeds:
         try:
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                 "Get-DnsClientCache | Select-Object -ExpandProperty Entry"],
-                capture_output=True, text=True, timeout=10,
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Get-DnsClientCache | Select-Object -ExpandProperty Entry",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             for entry in result.stdout.splitlines():
                 domain = entry.strip().lower().rstrip(".")
@@ -819,18 +847,24 @@ def scan_feed_intel(findings: List[Dict], pid_map: Dict[int, str]) -> None:
                         key = f"urlhit:{domain}"
                         if key not in seen:
                             seen.add(key)
-                            src = "URLhaus" if urlhaus and any(domain in u for u in urlhaus) else "OpenPhish"
-                            findings.append({
-                                "title": f"DNS Cache: {src} Malicious URL Match — {domain}",
-                                "path": domain,
-                                "reason": (
-                                    f"The domain '{domain}' was found in the DNS cache and matches "
-                                    f"a known malicious URL in the {src} feed."
-                                ),
-                                "severity": "HIGH",
-                                "category": "network",
-                                "subcategory": "feed_malicious_url",
-                            })
+                            src = (
+                                "URLhaus"
+                                if urlhaus and any(domain in u for u in urlhaus)
+                                else "OpenPhish"
+                            )
+                            findings.append(
+                                {
+                                    "title": f"DNS Cache: {src} Malicious URL Match — {domain}",
+                                    "path": domain,
+                                    "reason": (
+                                        f"The domain '{domain}' was found in the DNS cache and matches "
+                                        f"a known malicious URL in the {src} feed."
+                                    ),
+                                    "severity": "HIGH",
+                                    "category": "network",
+                                    "subcategory": "feed_malicious_url",
+                                }
+                            )
                         break
         except Exception as e:
             log(f"URLhaus/OpenPhish DNS correlation failed: {e}")

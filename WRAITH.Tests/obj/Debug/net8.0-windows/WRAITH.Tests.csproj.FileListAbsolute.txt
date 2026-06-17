@@ -148,3 +148,4 @@ F:\wraith\WRAITH.Tests\obj\Debug\net8.0-windows\WRAITH.Tests.pdb
 F:\wraith\WRAITH.Tests\obj\Debug\net8.0-windows\WRAITH.Tests.genruntimeconfig.cache
 F:\wraith\WRAITH.Tests\obj\Debug\net8.0-windows\ref\WRAITH.Tests.dll
 F:\wraith\WRAITH.Tests\bin\Debug\net8.0-windows\scanner\local_vuln_scanner.py
+F:\wraith\WRAITH.Tests\bin\Debug\net8.0-windows\scanner\ransomware_scanner.py

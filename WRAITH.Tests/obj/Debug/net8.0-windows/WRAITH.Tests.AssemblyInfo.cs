@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("WRAITH.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ebd2fd9d11d1955077e0234ed20e5376f113a4a8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67bee9daa91d9d8da4ac7c922ccfcdf2d504a09c")]
 [assembly: System.Reflection.AssemblyProductAttribute("WRAITH.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("WRAITH.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

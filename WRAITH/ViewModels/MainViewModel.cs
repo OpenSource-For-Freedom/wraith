@@ -117,6 +117,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly QuarantineService _quarantine = new();
     private readonly AutomatedResponseService _autoResponse;
     private readonly AlertingService _alerting = new();
+    private readonly FeedRefreshService _feeds = new();
+    private readonly RealtimeMonitorService _realtimeMonitor = new();
+    private bool _realtimeEnabled;
+    private DateTime? _lastScanUtc;
 
     private bool _isScanning;
     private bool _isReady;
@@ -156,6 +160,90 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public int LowCount  { get => _lowCount;  private set { _lowCount  = value; OnPropertyChanged(); } }
     public int InfoCount { get => _infoCount; private set { _infoCount = value; OnPropertyChanged(); } }
     public int TotalCount => AllFindings.Count;
+
+    // ── One-glance protection status (Malwarebytes-style banner) ──────────
+    private ProtectionStatus _protection =
+        new(ProtectionLevel.Unknown, "Not scanned yet", "Run your first scan to check this system.");
+
+    public string ProtectionHeadline => _protection.Headline;
+    public string ProtectionDetail   => _protection.Detail;
+    /// <summary>Level name (e.g. "Protected", "AtRisk") for colour/state binding in XAML.</summary>
+    public string ProtectionLevelName => _protection.Level.ToString();
+
+    private void RecomputeProtectionStatus()
+    {
+        int staleOrMissing = 0;
+        try
+        {
+            staleOrMissing = _feeds.GetFeedHealth()
+                .Count(h => h.Health != FeedRefreshService.FeedHealth.Ok);
+        }
+        catch { /* feed health is advisory; never block the banner */ }
+
+        _protection = ProtectionStatusEvaluator.Evaluate(
+            isScanning: IsScanning,
+            lastScanUtc: _lastScanUtc,
+            criticalCount: CritCount,
+            highCount: HighCount,
+            realtimeEnabled: RealtimeEnabled,
+            staleOrMissingFeeds: staleOrMissing,
+            nowUtc: DateTime.UtcNow);
+
+        OnPropertyChanged(nameof(ProtectionHeadline));
+        OnPropertyChanged(nameof(ProtectionDetail));
+        OnPropertyChanged(nameof(ProtectionLevelName));
+    }
+
+    // ── Real-time autostart monitoring ────────────────────────────────────
+    public bool RealtimeEnabled
+    {
+        get => _realtimeEnabled;
+        set
+        {
+            if (_realtimeEnabled == value) return;
+            _realtimeEnabled = value;
+            if (value) StartRealtimeMonitoring();
+            else       _realtimeMonitor.Stop();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RealtimeStatusText));
+            RecomputeProtectionStatus();
+        }
+    }
+
+    public string RealtimeStatusText =>
+        RealtimeEnabled ? "Real-time monitoring: ON" : "Real-time monitoring: OFF";
+
+    private void StartRealtimeMonitoring()
+    {
+        _realtimeMonitor.Start();   // defaults to the per-user + all-users Startup folders
+        var watched = RealtimeMonitorService.DefaultWatchPaths();
+        AppendLog(watched.Count > 0
+            ? $"[REALTIME] Watching {watched.Count} autostart location(s) for new files."
+            : "[REALTIME] No autostart locations found to watch.");
+    }
+
+    private void OnRealtimeDetected(RealtimeEvent ev)
+    {
+        // Marshal to the UI thread — FileSystemWatcher raises on a pool thread.
+        App.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            AppendLog($"[REALTIME] {ev.Reason}: {ev.Path}");
+            var finding = new ThreatFinding
+            {
+                Title        = "Autostart location changed",
+                Path         = ev.Path,
+                Reason       = $"{ev.Reason}. Real-time monitor flagged this the moment it appeared — "
+                             + "review whether it's a legitimate startup entry.",
+                Category     = "persistence",
+                Subcategory  = "realtime_autostart",
+                Severity     = Severity.High,
+                AnomalyScore = 70,
+            };
+            AllFindings.Add(finding);
+            UpdateSummary();
+            ApplyFilter();
+        });
+    }
 
     // SOC/EDR live briefing fields shown in the right-side incident banner.
     public string SocIncidentTitle => ThreatLevel switch
@@ -387,6 +475,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand ExportCsvCommand   { get; }
     public ICommand ExportJsonCommand  { get; }
     public ICommand KillProcessCommand { get; }
+    public ICommand ForceDeleteFileCommand { get; }
     public ICommand CopyTitleCommand   { get; }
     public ICommand CopyPathCommand    { get; }
     public ICommand CopyCommandLineCommand { get; }
@@ -395,6 +484,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ICommand RefreshStatusCommand { get; }
     public ICommand TraceOriginCommand { get; }
     public ICommand RestartToUpdateCommand { get; }
+    public ICommand CheckForUpdatesNowCommand { get; }
     public ICommand OpenQuarantineCommand { get; }
     public ICommand OpenFeedsCommand { get; }
     public ICommand SaveSlackWebhookCommand { get; }
@@ -416,6 +506,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         KillProcessCommand = new AsyncRelayCommand<ThreatFinding>(
             f => KillProcessAsync(f ?? _selectedFinding),
             f => (f?.Pid ?? _selectedFinding?.Pid) != null && !IsScanning);
+        ForceDeleteFileCommand = new AsyncRelayCommand<ThreatFinding>(
+            f => ForceDeleteFileAsync(f ?? _selectedFinding),
+            f => HasDeletablePath(f ?? _selectedFinding) && !IsScanning);
         CopyTitleCommand   = new RelayCommand(_ =>
         {
             if (_selectedFinding?.Title != null)
@@ -453,7 +546,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         LoadSlackPolicy();
 
-        RestartToUpdateCommand = new RelayCommand(_ => ShowUpdateDialog(UpdateService.IsInstalled));
+        _realtimeMonitor.Detected += OnRealtimeDetected;
+
+        RestartToUpdateCommand   = new RelayCommand(_ => ShowUpdateDialog(UpdateService.IsInstalled));
+        CheckForUpdatesNowCommand = new AsyncRelayCommand(CheckForUpdatesNowAsync, () => !_updateCheckInProgress);
 
         UpdateService.UpdateDownloaded += (currentVer, newVer, changelog, isInstalled) =>
         {
@@ -474,6 +570,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
             { Interval = TimeSpan.FromMilliseconds(150) };
         _flushTimer.Tick += (_, _) => FlushPendingBatch();
         _flushTimer.Start();
+    }
+
+    // ── Manual update check ──────────────────────────────────────────
+    private bool _updateCheckInProgress;
+
+    private async Task CheckForUpdatesNowAsync()
+    {
+        _updateCheckInProgress = true;
+        CommandManager.InvalidateRequerySuggested();
+        AppendLog("[UPDATE] Checking for updates…");
+        try
+        {
+            var result = await UpdateService.CheckForUpdatesAsync();
+            // When an update IS found the UpdateDownloaded event already opens the
+            // dialog; here we only need to give feedback for the quiet outcomes.
+            switch (result)
+            {
+                case UpdateService.UpdateCheckResult.UpToDate:
+                    AppendLog("[UPDATE] You're on the latest version.");
+                    MessageBox.Show("WRAITH is up to date.", "WRAITH — Updates",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    break;
+                case UpdateService.UpdateCheckResult.Failed:
+                    AppendLog("[UPDATE] Update check failed — see %ProgramData%\\WRAITH\\Logs\\wraith-update.log.");
+                    MessageBox.Show(
+                        "Couldn't check for updates. See the update log at\n"
+                        + "%ProgramData%\\WRAITH\\Logs\\wraith-update.log",
+                        "WRAITH — Updates", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    break;
+                default:
+                    AppendLog($"[UPDATE] {result}.");
+                    break;
+            }
+        }
+        finally
+        {
+            _updateCheckInProgress = false;
+            CommandManager.InvalidateRequerySuggested();
+        }
     }
 
     // ── Update dialog (single-instance) ──────────────────────────────
@@ -693,6 +828,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ThreatLevel  = lvl;
             CurrentPhase = $"Scan complete — Threat level: {lvl}";
             ScanProgress = 100;
+            _lastScanUtc = DateTime.UtcNow;
             AppendLog($"[DONE] {AllFindings.Count} finding(s) · Threat level: {lvl}");
         }
         catch (OperationCanceledException)
@@ -723,6 +859,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _orchestrator?.KillAll();
         try { _cts?.Dispose(); } catch { }
         _cts = null;
+        try { _realtimeMonitor.Dispose(); } catch { }
     }
 
     private void StopScan()
@@ -818,6 +955,95 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         TouchFinding(finding);
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    /// <summary>
+    /// Resolves the on-disk file a finding points at, or "" when there isn't one.
+    /// Registry- and directory-shaped findings are intentionally excluded — those
+    /// route through the Quarantine vault, not a raw force-delete.
+    /// </summary>
+    private static string ResolveDeletablePath(ThreatFinding? finding)
+    {
+        var candidate = finding?.Path?.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(candidate)) return string.Empty;
+        if (QuarantineService.IsRegistryPath(candidate)) return string.Empty;
+        try
+        {
+            var full = System.IO.Path.GetFullPath(Environment.ExpandEnvironmentVariables(candidate));
+            return System.IO.File.Exists(full) ? full : string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    private static bool HasDeletablePath(ThreatFinding? finding) =>
+        !string.IsNullOrWhiteSpace(ResolveDeletablePath(finding));
+
+    /// <summary>
+    /// Force-deletes the malicious file a finding points at — terminating any
+    /// process that has it locked (except OS-critical processes) and falling back
+    /// to delete-on-reboot when the lock can't be broken. This is the "I assert
+    /// it's malicious, remove it now" action for an in-use file.
+    /// </summary>
+    private async Task ForceDeleteFileAsync(ThreatFinding? finding = null)
+    {
+        finding ??= _selectedFinding;
+        var path = ResolveDeletablePath(finding);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            AppendLog("[INFO] Force delete: selected finding has no on-disk file path "
+                    + "(registry/directory entries use the Quarantine vault).");
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Force-delete this file?\n\n{path}\n\n"
+          + "WRAITH will terminate any process locking the file (except OS-critical ones) "
+          + "and delete it. If the lock can't be broken it will be deleted on next reboot.\n\n"
+          + "This cannot be undone.",
+            "WRAITH — Force Delete File",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        AppendLog($"[DELETE] Force-deleting: {path}");
+        var result = await Task.Run(() => QuarantineService.ForceDeleteOriginal(path, killHolders: true));
+
+        foreach (var killed in result.KilledProcesses)
+            AppendLog($"[DELETE]   terminated holder: {killed}");
+
+        switch (result.Outcome)
+        {
+            case ForceDeleteOutcome.Deleted:
+            case ForceDeleteOutcome.DeletedAfterKill:
+                AppendLog($"[DELETED] {path} — {result.Detail}");
+                if (finding != null)
+                {
+                    finding.Reason += "  [FILE DELETED by WRAITH]";
+                    finding.IsLive = false;
+                    finding.ProcessStatus = "";
+                    TouchFinding(finding);
+                }
+                break;
+
+            case ForceDeleteOutcome.ScheduledForReboot:
+                AppendLog($"[PENDING REBOOT] {path} — {result.Detail}");
+                MessageBox.Show(result.Detail, "WRAITH — Deletion Scheduled",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                if (finding != null) { finding.Reason += "  [DELETE PENDING REBOOT]"; TouchFinding(finding); }
+                break;
+
+            case ForceDeleteOutcome.NotFound:
+                AppendLog($"[INFO] {path} — already gone.");
+                break;
+
+            default:
+                AppendLog($"[ERROR] Could not delete {path} — {result.Detail}");
+                MessageBox.Show(result.Detail, "WRAITH — Delete Failed",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                break;
+        }
+
         CommandManager.InvalidateRequerySuggested();
     }
 
@@ -1668,6 +1894,7 @@ $result | ConvertTo-Json -Depth 8 -Compress
         OnPropertyChanged(nameof(SocCurrentModule));
         OnPropertyChanged(nameof(SocTelemetryLine));
         OnPropertyChanged(nameof(SocRecommendedAction));
+        RecomputeProtectionStatus();
     }
 
     // ── Logging ───────────────────────────────────────────────────────

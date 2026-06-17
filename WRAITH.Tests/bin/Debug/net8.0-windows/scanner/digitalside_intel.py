@@ -2,13 +2,17 @@
 DigitalSide OSINT threat-intel correlation.
 
 DigitalSide (https://osint.digitalside.it/) publishes daily IOC feeds
-under a free CC-BY licence with no API key:
+under a free CC-BY licence with no API key. WRAITH pulls them from the
+project's GitHub mirror (github.com/davidonzo/Threat-Intel) because the
+self-hosted origin periodically goes offline; the FeedRefreshService falls
+back to the origin if the mirror is ever unreachable.
 
-    latestdomains.txt  — newline-delimited malicious domains
-    latestips.txt      — newline-delimited malicious IPv4s
-    latesturls.txt     — newline-delimited malicious URLs
-    latestmd5.txt /
-    latestsha256.txt   — file hashes
+    ips.txt        — newline-delimited malicious IPv4s
+    domains.txt    — newline-delimited malicious domains
+    urls.txt       — newline-delimited malicious URLs
+    hashes.json    — JSON lookup of md5/sha1/sha256 per sample (mirror format);
+                     legacy plain hashes_md5.txt / hashes_sha256.txt still read
+                     when present (origin format / test fixtures)
 
 We correlate:
     - active outbound connections against the IP feed
@@ -251,6 +255,48 @@ def scan() -> List[Dict]:
     return findings
 
 
+def _load_hash_sets() -> tuple[Set[str], Set[str]]:
+    """Returns (md5_set, sha256_set) from the DigitalSide hash feed.
+
+    The GitHub mirror ships hashes as a single JSON lookup (hashes.json) whose
+    ``lookup`` map holds an md5/sha1/sha256 triple per sample. Parse that when
+    present. Fall back to the legacy plain-text lists (hashes_md5.txt /
+    hashes_sha256.txt) — still emitted by the origin server and by the unit-test
+    fixtures — so neither format breaks the matcher.
+    """
+    md5: Set[str] = set()
+    sha256: Set[str] = set()
+
+    jpath = feed_path(FEED_DIGITALSIDE, "hashes.json")
+    if jpath.exists():
+        import json as _json
+
+        try:
+            with jpath.open(encoding="utf-8", errors="replace") as f:
+                data = _json.load(f)
+        except (OSError, ValueError):
+            data = None
+        lookup = data.get("lookup") if isinstance(data, dict) else None
+        if isinstance(lookup, dict):
+            for entry in lookup.values():
+                if not isinstance(entry, dict):
+                    continue
+                m = str(entry.get("md5") or "").lower()
+                s = str(entry.get("sha256") or "").lower()
+                if m:
+                    md5.add(m)
+                if s:
+                    sha256.add(s)
+
+    # Legacy plain-text fallback (origin format + test fixtures).
+    if not sha256:
+        sha256 = _load_set("hashes_sha256.txt")
+    if not md5:
+        md5 = _load_set("hashes_md5.txt")
+
+    return md5, sha256
+
+
 def hash_match(path_or_hash: str) -> Dict[str, str]:
     """Convenience helper for other scanners.
 
@@ -258,8 +304,7 @@ def hash_match(path_or_hash: str) -> Dict[str, str]:
     when it is. Lets yara_scanner / heuristics correlate their candidate
     files against the DigitalSide hash feed without each one re-parsing.
     """
-    sha256_set = _load_set("hashes_sha256.txt")
-    md5_set = _load_set("hashes_md5.txt")
+    md5_set, sha256_set = _load_hash_sets()
 
     candidate = path_or_hash.lower()
     if candidate in sha256_set:

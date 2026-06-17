@@ -23,8 +23,9 @@ public sealed class FeedRefreshServiceTests
         Assert.Contains("digitalside_ips", ids);
         Assert.Contains("digitalside_domains", ids);
         Assert.Contains("digitalside_urls", ids);
-        Assert.Contains("digitalside_sha256", ids);
-        Assert.Contains("digitalside_md5", ids);
+        // The origin's separate md5/sha256 plain lists were consolidated into a
+        // single JSON hash lookup when we moved DigitalSide to its GitHub mirror.
+        Assert.Contains("digitalside_hashes", ids);
     }
 
     [Fact]
@@ -126,5 +127,63 @@ public sealed class FeedRefreshServiceTests
         var json = JsonSerializer.Serialize(status);
         Assert.Contains("\"error\":", json);
         Assert.Contains("connection refused", json);
+    }
+
+    // ── Feed health / self-test ─────────────────────────────────────────
+
+    private static readonly IReadOnlyList<FeedSource> TwoSources = new[]
+    {
+        new FeedSource("a", "Feed A", "https://a", "a/a.txt", "desc"),
+        new FeedSource("b", "Feed B", "https://b", "b/b.txt", "desc"),
+    };
+
+    [Fact]
+    public void EvaluateHealth_marks_missing_when_no_manifest_entry()
+    {
+        var now = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+        var reports = FeedRefreshService.EvaluateHealth(
+            TwoSources, new Dictionary<string, FeedStatus>(), now, TimeSpan.FromHours(24));
+
+        Assert.All(reports, r => Assert.Equal(FeedRefreshService.FeedHealth.Missing, r.Health));
+    }
+
+    [Fact]
+    public void EvaluateHealth_marks_missing_when_last_status_errored()
+    {
+        var now = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+        var manifest = new Dictionary<string, FeedStatus>
+        {
+            ["a"] = new FeedStatus { Status = "error", Error = "timeout", LastRefreshUtc = null },
+        };
+        var reports = FeedRefreshService.EvaluateHealth(TwoSources, manifest, now, TimeSpan.FromHours(24));
+
+        Assert.Equal(FeedRefreshService.FeedHealth.Missing, reports.First(r => r.Id == "a").Health);
+    }
+
+    [Fact]
+    public void EvaluateHealth_marks_stale_past_threshold_and_ok_within()
+    {
+        var now = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+        var manifest = new Dictionary<string, FeedStatus>
+        {
+            // Refreshed 2h ago → Ok.
+            ["a"] = new FeedStatus { Status = "ok", LastRefreshUtc = "2026-06-16T10:00:00Z" },
+            // Refreshed 30h ago → Stale.
+            ["b"] = new FeedStatus { Status = "ok", LastRefreshUtc = "2026-06-15T06:00:00Z" },
+        };
+        var reports = FeedRefreshService.EvaluateHealth(TwoSources, manifest, now, TimeSpan.FromHours(24));
+
+        Assert.Equal(FeedRefreshService.FeedHealth.Ok,    reports.First(r => r.Id == "a").Health);
+        Assert.Equal(FeedRefreshService.FeedHealth.Stale, reports.First(r => r.Id == "b").Health);
+    }
+
+    [Fact]
+    public void EvaluateHealth_covers_every_source()
+    {
+        var now = new DateTime(2026, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+        var reports = FeedRefreshService.EvaluateHealth(
+            FeedRefreshService.Sources, new Dictionary<string, FeedStatus>(), now, TimeSpan.FromHours(24));
+
+        Assert.Equal(FeedRefreshService.Sources.Count, reports.Count);
     }
 }

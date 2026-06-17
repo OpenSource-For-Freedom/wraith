@@ -420,6 +420,23 @@
 
                     <Separator/>
 
+                    <!-- Real-time protection + manual update check -->
+                    <TextBlock Text="PROTECTION" Style="{StaticResource GoldLabel}" Margin="0,8,0,4"/>
+                    <CheckBox Content="Real-time monitoring"
+                      IsChecked="{Binding RealtimeEnabled}"
+                      Foreground="{StaticResource BrPatronusSilver}"
+                      Margin="0,0,0,4"
+                      ToolTip="Watch autostart (Startup) folders and flag new files the moment they appear"/>
+                    <TextBlock Text="{Binding RealtimeStatusText}"
+                      Foreground="{StaticResource BrPatronusSilver}"
+                      FontSize="10" Opacity="0.7" Margin="0,0,0,8"/>
+                    <Button Content="Check for Updates" Style="{StaticResource GhostButton}"
+                      Command="{Binding CheckForUpdatesNowCommand}"
+                      Margin="0,0,0,12"
+                      ToolTip="Check GitHub for a newer WRAITH release now"/>
+
+                    <Separator/>
+
                     <TextBlock Text="SLACK WEBHOOK" Style="{StaticResource GoldLabel}" Margin="0,8,0,4"/>
                     <TextBlock Text="Test first, then save. Alerts are sent for Critical (and optionally High) findings."
                    Foreground="{StaticResource BrPatronusSilver}"
@@ -625,12 +642,22 @@
                           CornerRadius="5,0,0,5"/>
 
                   <StackPanel Grid.Column="1" Margin="10,7,10,8">
-                    <TextBlock Text="SOC INCIDENT BRIEF"
+                    <TextBlock Text="PROTECTION STATUS"
                                Style="{StaticResource GoldLabel}"
                                FontSize="10"/>
+                    <TextBlock Text="{Binding ProtectionHeadline}"
+                               Foreground="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}"
+                               FontSize="17"
+                               FontWeight="Bold"
+                               Margin="0,1,0,2"/>
+                    <TextBlock Text="{Binding ProtectionDetail}"
+                               Foreground="{StaticResource BrPatronusSilver}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6"/>
                     <TextBlock Text="{Binding SocIncidentTitle}"
                                Foreground="{Binding ThreatLevel, Converter={StaticResource ThreatBrush}}"
-                               FontSize="16"
+                               FontSize="13"
                                FontWeight="Bold"
                                Margin="0,1,0,3"/>
                     <TextBlock Text="{Binding SocIncidentDetail}"
@@ -892,6 +919,13 @@
                                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding}"
                                   IsEnabled="{Binding IsLive}"/>
+                        <MenuItem Header="Force Delete File"
+                                  FontWeight="SemiBold"
+                                  Foreground="#FF2D55"
+                                  ToolTip="Terminate any process locking this file (except OS-critical ones), then delete it"
+                                  Command="{Binding PlacementTarget.Tag.ForceDeleteFileCommand,
+                                                   RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding}"/>
                         <MenuItem Header="Inspect Selection"
                                   Command="{Binding PlacementTarget.Tag.InspectFindingCommand,
                                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"

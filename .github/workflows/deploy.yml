@@ -307,6 +307,14 @@ jobs:
           $sig = Get-AuthenticodeSignature $exePath
           Write-Host "Signed OK  status=$($sig.Status)  signer='$($sig.SignerCertificate.Subject)'"
 
+          # Export the signing cert's thumbprint so the Velopack step can sign
+          # every binary it bundles (Setup.exe, the portable apphost, and the
+          # WRAITH.exe inside the nupkg) with the SAME cert via signtool. The
+          # cert (with private key) lives in Cert:\CurrentUser\My for this job,
+          # so `signtool /sha1 <thumbprint>` resolves it in both the trusted-CA
+          # and self-signed branches.
+          "WRAITH_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Stage release bundle
         shell: pwsh
         run: |
@@ -344,7 +352,14 @@ jobs:
           upload-artifact:   true
 
       - name: Install Velopack CLI
-        run: dotnet tool install -g vpk
+        # The vpk CLI version MUST match the Velopack library version referenced
+        # in WRAITH.csproj (<PackageReference Include="Velopack" Version="X" />).
+        # vpk writes the release metadata (releases.win.json / nupkg layout) and
+        # the in-app UpdateManager from the library reads it; when the two drift
+        # (e.g. CI's unpinned `dotnet tool install -g vpk` pulls 1.2.0 while the
+        # app links 1.1.1), CheckForUpdatesAsync silently returns "no update" and
+        # remote updates stop working. Keep this in lockstep with the csproj.
+        run: dotnet tool install -g vpk --version 1.1.1
 
       # Velopack requires a NORMAL (non-single-file) publish to work correctly.
       # Single-file merges all assemblies into one blob that Velopack cannot
@@ -398,15 +413,37 @@ jobs:
           $notesPath = "./release-notes.md"
           Set-Content -Path $notesPath -Value $notes -Encoding UTF8
 
+          # Sign every binary Velopack bundles (Setup.exe, the portable apphost,
+          # and the WRAITH.exe placed inside the .nupkg) with the same cert the
+          # single-file build was signed with — otherwise the installer and the
+          # update payload ship unsigned even when the portable ZIP is signed.
+          # vpk runs signtool with these params per file; signtool resolves the
+          # cert from Cert:\CurrentUser\My by thumbprint. Timestamping makes the
+          # signature outlive the (self-signed, 1-year) cert.
+          $signParams = "/sha1 $env:WRAITH_CERT_THUMBPRINT /fd SHA256 /tr http://timestamp.digicert.com /td SHA256"
+
           vpk pack `
             --packId WRAITH `
             --packVersion $v `
             --packDir ./publish-velopack `
             --mainExe WRAITH.exe `
             --releaseNotes $notesPath `
-            --outputDir ./velopack-out
+            --outputDir ./velopack-out `
+            --signParams $signParams
           Write-Host "Velopack output:"
           Get-ChildItem ./velopack-out | Select-Object Name, Length
+
+          # Fail loudly if the installer didn't actually get signed — a silent
+          # unsigned Setup.exe is exactly the regression this step exists to prevent.
+          $setup = Get-ChildItem ./velopack-out -Filter '*Setup.exe' | Select-Object -First 1
+          if ($setup) {
+            $ssig = Get-AuthenticodeSignature $setup.FullName
+            Write-Host "Setup.exe signature: $($ssig.Status)  signer='$($ssig.SignerCertificate.Subject)'"
+            if ($ssig.Status -notin @('Valid','UnknownError')) {
+              Write-Error "Velopack Setup.exe is not signed (status=$($ssig.Status))."
+              exit 1
+            }
+          }
 
       - name: Create ZIP
         shell: pwsh
@@ -500,10 +537,16 @@ jobs:
 
             ## WRAITH — Expecto Patronum · Windows Threat Hunter
 
-            ### Install
-            1. Download **`${{ steps.ver.outputs.zip }}`** below
-            2. Extract anywhere (e.g. `C:\Tools\WRAITH\`)
-            3. Double-click **`WRAITH.exe`**
+            ### Install — recommended (auto-updating)
+            1. Download **`WRAITH-win-Setup.exe`** below
+            2. Run it — WRAITH installs to `%LocalAppData%\WRAITH` and adds a Start-menu shortcut
+            3. **Future updates download and apply in-app** — click *Check for Updates* or accept the prompt
+
+            > Only the **Setup.exe** install can self-update. The portable ZIP cannot apply updates in place.
+
+            ### Install — portable (no auto-update)
+            1. Download **`${{ steps.ver.outputs.zip }}`**, extract anywhere, double-click **`WRAITH.exe`**
+            2. Best for air-gapped machines, USB / forensic kits, and CI
 
             > **Requires Administrator** — UAC prompt will appear on first launch.
 
