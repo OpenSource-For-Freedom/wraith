@@ -23,7 +23,7 @@ jobs:
     # skips activate as REAL tests instead of being silently skipped on Ubuntu.
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
