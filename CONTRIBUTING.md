@@ -54,8 +54,8 @@ By participating in this project you agree to uphold a respectful and inclusive 
 ### First-time Setup
 
 ```powershell
-# Install dependencies (adjust for your package manager / build system)
-.\scripts\setup.ps1
+# Install Python and scanner dependencies, then build the app
+.\SETUP.bat
 ```
 
 > **Note:** All scripts should be run from a PowerShell terminal opened as **Administrator** unless otherwise noted.
@@ -88,7 +88,7 @@ git checkout -b feature/your-feature-name
 - Write or update tests for any logic you change.
 - Run the full test suite before opening a PR:
   ```powershell
-  .\scripts\test.ps1
+  dotnet test
   ```
 - If your change touches the build system or CI pipeline, document why.
 
