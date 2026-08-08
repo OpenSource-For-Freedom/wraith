@@ -661,6 +661,9 @@ _KNOWN_LEGITIMATE_SIMILARS: frozenset = frozenset(
 )
 
 
+_POPULAR_LOWER = {p.lower() for p in POPULAR_PACKAGES}
+
+
 def _is_typosquat(name: str) -> Tuple[bool, str]:
     # Scoped packages (@scope/name) provide namespace isolation. Stripping the
     # scope prefix before comparison causes false positives — e.g. @babel/core
@@ -672,6 +675,13 @@ def _is_typosquat(name: str) -> Tuple[bool, str]:
 
     clean = name.lower()
     if clean in _KNOWN_LEGITIMATE_SIMILARS:
+        return False, ""
+
+    # A package that IS itself a known-popular package cannot be a typosquat of
+    # another one. Without this guard, express (Levenshtein 2 from cypress),
+    # preact (1 from react), nest (1 from next) and other hugely-popular real
+    # dependencies were flagged HIGH as typosquats of their neighbours.
+    if clean in _POPULAR_LOWER:
         return False, ""
 
     for popular in POPULAR_PACKAGES:

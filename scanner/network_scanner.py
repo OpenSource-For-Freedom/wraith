@@ -352,7 +352,10 @@ Get-NetTCPConnection -State Listen |
             # Bind-shell / RAT ports. Use the unambiguous set only: a dev server
             # or Java app listening on :8080 / :8443 is not a bind shell, and the
             # all-interface-listener block below already covers odd high ports.
-            if port in UNAMBIGUOUS_C2_PORTS and proc_name not in TRUSTED_LISTENER_PROCESSES:
+            if (
+                port in UNAMBIGUOUS_C2_PORTS
+                and proc_name not in TRUSTED_LISTENER_PROCESSES
+            ):
                 sev = "CRITICAL"
                 reason = (
                     f"Port {port} is a well-known RAT/backdoor port. "

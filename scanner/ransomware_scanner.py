@@ -621,7 +621,9 @@ def check_mass_rename_activity(findings: List[Dict]) -> None:
 
 _CANARY_DIR = Path(os.environ.get("USERPROFILE", "C:\\Users\\Public")) / "Documents"
 _CANARY_FILENAME = "~wraith_canary_do_not_delete.txt"
-_CANARY_CONTENT = "WRAITH canary file — tampering with this file triggers ransomware detection."
+_CANARY_CONTENT = (
+    "WRAITH canary file — tampering with this file triggers ransomware detection."
+)
 
 
 def _canary_path() -> Path:
