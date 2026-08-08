@@ -266,7 +266,14 @@ def check_unsigned_drivers() -> List[Dict]:
     except Exception:
         pass
 
-    for name in driver_names[:60]:  # cap to avoid timeout
+    # Cap to bound worst-case runtime (each driver spawns its own
+    # Get-AuthenticodeSignature PowerShell call). 60 was far too low — a typical
+    # host has ~150-250 loaded drivers and `sc query` returns them alphabetically,
+    # so any unsigned rootkit driver sorting past the 60th was never checked. 200
+    # covers the vast majority of real hosts and still finishes well inside the
+    # 10-minute scan budget. TODO: batch the signature check into one PS call to
+    # drop the cap entirely.
+    for name in driver_names[:200]:
         driver_path = path_map.get(name.lower(), "")
         if not driver_path:
             continue
@@ -501,9 +508,10 @@ def check_prefetch() -> List[Dict]:
             name = pf_file.name.upper()
             # Prefetch format: <EXENAME>-<HASH>.pf
             exe_part = name.split("-")[0]
-            if exe_part in MALICIOUS_PREFETCH or any(
-                m in name for m in MALICIOUS_PREFETCH
-            ):
+            # Exact match on the parsed EXE name only. The old `any(m in name ...)`
+            # substring fallback flagged benign prefetch like SYNC.EXE (contains
+            # "NC.EXE") and CONCENTR.EXE as CRITICAL attack-tool executions.
+            if exe_part in MALICIOUS_PREFETCH:
                 try:
                     mtime = pf_file.stat().st_mtime
                     import datetime

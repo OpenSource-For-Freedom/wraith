@@ -180,10 +180,14 @@ KNOWN_GOOD_PATH_PREFIXES = [
     os.path.join(_programfiles, "microsoft visual studio"),
     os.path.join(_programfiles86, "microsoft visual studio"),
     os.path.join(_localappdata, "microsoft", "windowsapps"),
-    # Windows diagnostic infrastructure — SDIAG extracts system DLLs to Temp
-    # for analysis; audiospew.dll, audiodiag.dll etc. are legitimate Windows files
-    os.path.join(_windir, "temp"),
-    os.path.join(os.environ.get("TEMP", "").lower(), ""),  # %TEMP%
+    # NOTE: %WINDIR%\Temp and %TEMP% were previously trusted here (to silence
+    # legitimate SDIAG-extracted diagnostic DLLs), but marking the temp dirs
+    # known-good suppressed every generic-rule YARA match (webshells, malicious
+    # scripts, RATs, hacktools) in exactly the directories where droppers land
+    # and which PRIORITY_PATHS deliberately walks. That blinded the scanner where
+    # it matters most, so the temp dirs are intentionally NOT trusted. A handful
+    # of signed-diagnostic-DLL false positives is an acceptable trade for not
+    # going blind in the primary malware staging location.
 ]
 
 # Rule names whose namespace/name signals a named family (high confidence).
@@ -204,7 +208,7 @@ _NAMED_FAMILY_SUBSTRINGS = (
     "quasar",
     "remcos",
     "bitrat",
-    "agentTesla",
+    "agenttesla",  # compared against an already-lowercased rule name
     "xworm",
     "redline",
 )
