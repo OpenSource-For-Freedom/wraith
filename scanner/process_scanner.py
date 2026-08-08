@@ -14,6 +14,15 @@ import json
 import subprocess
 from typing import List, Dict, Any
 
+# A trusted process image name is only trusted when it runs from one of these
+# Windows system directories. Anything else with a system name is a masquerade.
+_SYSTEM_DIR_MARKERS = (
+    "\\windows\\system32\\",
+    "\\windows\\syswow64\\",
+    "\\windows\\winsxs\\",
+    "\\windows\\servicing\\",
+)
+
 # Known legitimate process names (allow-list to reduce noise)
 TRUSTED_PROCESSES = {
     "svchost.exe",
@@ -104,8 +113,17 @@ SUSPICIOUS_CMDLINE_PATTERNS = [
     "oculusservice",
     "cline",
     "npm install --global",
-    "curl.*|.*bash",
-    "wget.*|.*sh",
+    # Download piped straight into a shell / interpreter — the canonical dropper
+    # one-liner. These were previously written as regex fragments
+    # ("curl.*|.*bash"), but the matcher below is a literal substring test
+    # (`pattern in cmdline`), so those entries could never fire and the whole
+    # class went undetected. Use literal indicators that actually occur.
+    "| bash",
+    "|bash",
+    "| sh -c",
+    "|sh -c",
+    "| iex",
+    "|iex",
 ]
 
 
@@ -162,9 +180,16 @@ def analyze_process(proc: Dict, conn_map: Dict[int, List[str]]) -> List[Dict]:
     ppid = proc.get("ParentProcessId", 0)
     remotes = conn_map.get(pid, [])
 
-    # Skip fully trusted procs
+    # Skip fully trusted procs — but ONLY when they run from a Windows system
+    # directory (or have no image path, e.g. the System/Registry pseudo-processes
+    # and protected processes whose path can't be read). Trusting purely by image
+    # name lets malware masquerade: a binary named svchost.exe / lsass.exe dropped
+    # in %APPDATA% or %TEMP% would otherwise be returned as clean before any path,
+    # cmdline, or network check runs. A trusted name from an unexpected location
+    # is itself a signal, so fall through and let the heuristics below judge it.
     if name in TRUSTED_PROCESSES:
-        return []
+        if not path or any(m in path for m in _SYSTEM_DIR_MARKERS):
+            return []
 
     # Skip WRAITH itself — the .NET single-file publish extracts to
     # %TEMP%\.net\WRAITH\<hash>\ so without this the scanner flags its own
@@ -264,6 +289,26 @@ def scan_processes() -> Dict[str, Any]:
     findings = []
     processes = _get_processes_powershell()
     conn_map = _get_network_connections()
+
+    # A live Windows host always has running processes. An empty list means the
+    # Win32_Process query failed (PowerShell/CIM blocked, timed out, or errored)
+    # rather than that the host is clean. Surface that as a degraded-scan finding
+    # so "no process findings" is never silently mistaken for "no process threats".
+    if not processes:
+        findings.append(
+            {
+                "category": "processes",
+                "subcategory": "scan_degraded",
+                "severity": "MEDIUM",
+                "title": "Process enumeration returned no data",
+                "path": "",
+                "reason": (
+                    "Win32_Process query returned nothing — the process scan is "
+                    "degraded and may be blind to live threats. Verify PowerShell/"
+                    "CIM availability and re-run."
+                ),
+            }
+        )
 
     for proc in processes:
         hits = analyze_process(proc, conn_map)

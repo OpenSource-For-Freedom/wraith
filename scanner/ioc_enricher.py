@@ -9,6 +9,7 @@ or air-gapped runs are unaffected.
 """
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -105,9 +106,15 @@ def _extract_indicator(finding: Dict[str, Any]) -> Optional[tuple]:
         m = _IP_RE.search(field)
         if m:
             ip = m.group(1)
-            # Skip loopback / RFC-1918 ranges (not interesting to look up)
-            if not ip.startswith(("127.", "10.", "192.168.", "172.")):
-                return ip, "ip:port"
+            # Only enrich globally-routable addresses. The old string-prefix test
+            # skipped ALL of 172.* as "RFC-1918", but only 172.16.0.0/12 is
+            # private — public 172.x C2/cloud hosts (Linode 172.104.*, Cloudflare
+            # 172.67.*, Google 172.217.*) were silently dropped from enrichment.
+            try:
+                if ipaddress.ip_address(ip).is_global:
+                    return ip, "ip:port"
+            except ValueError:
+                pass
 
     # Domain
     for field in (path, reason):

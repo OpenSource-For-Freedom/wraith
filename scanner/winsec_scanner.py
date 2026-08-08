@@ -512,8 +512,12 @@ def check_llmnr_nbtns(findings: List[Dict]) -> None:
         r"SYSTEM\CurrentControlSet\Services\NetBT\Parameters",
         "NodeType",
     )
-    # NodeType 2 = P-node (no broadcasts) — safe. 1,4,8 = uses broadcasts
-    if nbtns not in (2,):
+    # NodeType 2 = P-node (no broadcasts) — safe. 1,4,8 = uses broadcasts.
+    # Only flag when the value is EXPLICITLY set to a broadcasting node type.
+    # When NodeType is absent (the norm on consumer DHCP hosts) _reg_get returns
+    # None, and the old `None not in (2,)` test fired MEDIUM on nearly every
+    # machine — pure noise, not evidence of a misconfiguration.
+    if nbtns in (1, 4, 8):
         findings.append(
             {
                 "title": "NetBIOS Name Service (NBT-NS) Broadcasting Enabled",
