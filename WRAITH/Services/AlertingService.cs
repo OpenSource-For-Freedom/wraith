@@ -71,6 +71,8 @@ public sealed class AlertingService
         if (string.IsNullOrWhiteSpace(policy.SlackWebhookUrl)) return (false, "Slack webhook URL is empty");
         if (!policy.SlackWebhookUrl.StartsWith("https://hooks.slack.com/", StringComparison.OrdinalIgnoreCase))
             return (false, "Invalid Slack webhook URL. It should start with https://hooks.slack.com/");
+        if (!MeetsAlertThreshold(result, policy.SlackNotifyOnHigh))
+            return (false, $"Slack alert suppressed: threat level {result.Summary.ThreatLevel} is below the alert threshold");
 
         var payload = BuildSlackPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.SlackWebhookUrl, payload, "Slack", ct);
@@ -88,9 +90,25 @@ public sealed class AlertingService
         if (!policy.DiscordWebhookUrl.StartsWith("https://discord.com/api/webhooks/", StringComparison.OrdinalIgnoreCase) &&
             !policy.DiscordWebhookUrl.StartsWith("https://discordapp.com/api/webhooks/", StringComparison.OrdinalIgnoreCase))
             return (false, $"Invalid Discord webhook URL (got: {policy.DiscordWebhookUrl[..Math.Min(60, policy.DiscordWebhookUrl.Length)]}…). Must start with https://discord.com/api/webhooks/");
+        if (!MeetsAlertThreshold(result, policy.DiscordNotifyOnHigh))
+            return (false, $"Discord alert suppressed: threat level {result.Summary.ThreatLevel} is below the alert threshold");
 
         var payload = BuildDiscordPayload(result, soar, scanPath);
         return await PostWebhookAsync(policy.DiscordWebhookUrl, payload, "Discord", ct);
+    }
+
+    // ── Alert threshold gate ─────────────────────────────────────────────────────
+    // The settings UI states: "Alerts are sent for Critical (and optionally High)
+    // findings." Critical always alerts; High alerts only when the "Notify on HIGH
+    // too" toggle is on; Medium/Low/Clean never trigger an unsolicited SOC alert.
+    // Previously this toggle was persisted to policy but never consulted, so EVERY
+    // scan — including clean ones — POSTed to the webhook. That is alert-fatigue
+    // noise (a false positive from the operator's point of view) and made the
+    // "Notify on HIGH too" checkbox a no-op.
+    private static bool MeetsAlertThreshold(ScanResult result, bool notifyOnHigh)
+    {
+        var level = result.Summary.ThreatLevel?.ToUpperInvariant() ?? "UNKNOWN";
+        return level == "CRITICAL" || (notifyOnHigh && level == "HIGH");
     }
 
     // ── Discord — Rich Embed ────────────────────────────────────────────────────

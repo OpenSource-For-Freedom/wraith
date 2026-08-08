@@ -71,7 +71,10 @@ SUSPICIOUS_MESSAGE_KEYWORDS = [
     "powershell -enc",
     "encoded",
     "invoke-expression",
-    "iex",
+    # "iex" alone is a substring of iexplore.exe / iexplorer and fired HIGH on
+    # every Internet Explorer event. Match only the real invocation forms.
+    "iex(",
+    "iex ",
     "downloadstring",
     "webclient",
     "mshta",
@@ -87,19 +90,20 @@ SUSPICIOUS_MESSAGE_KEYWORDS = [
     "cobalt strike",
     "beacon",
     "meterpreter",
-    "base64",
     "frombase64",
     "-nop -w hidden",
     "sc create",
     "schtasks /create",
     "netsh advfirewall",
     "wmic process call create",
-    "npm install",
-    "node_modules",
-    "cline",
-    "package.json",
-    "curl.*pipe.*bash",
-    "wget.*pipe.*sh",
+    # Download piped into a shell/interpreter. The previous "curl.*pipe.*bash"
+    # entries were regex-shaped but matched as literal substrings, so they never
+    # fired. Dev-supply-chain keywords (npm install / node_modules / package.json)
+    # were removed: they are npm_check's job and produced HIGH noise on dev boxes.
+    "| bash",
+    "|bash",
+    "| sh -c",
+    "|iex",
 ]
 
 LOG_NAMES = [

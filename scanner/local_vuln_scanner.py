@@ -129,21 +129,37 @@ def check_os_patch_status(findings: List[Dict]) -> None:
             kb = json.loads(raw)
             installed_on = kb.get("InstalledOn")
             if installed_on:
-                # PowerShell returns dates in various formats; parse best-effort
+                # PowerShell returns dates in various formats; parse best-effort.
                 dt = None
-                for fmt in ("%m/%d/%Y %I:%M:%S %p", "%Y-%m-%dT%H:%M:%S", "%m/%d/%Y"):
+                # PowerShell 5.1's ConvertTo-Json serializes DateTime as
+                # "/Date(<epoch-ms>)/". This MUST be handled first: the old code
+                # fell through to a `re.search(r"(\d{4})")` fallback that grabbed
+                # the first 4 digits of the epoch ms ("1721...") and built
+                # datetime(1721, 1, 1), firing a false CRITICAL "missing patches"
+                # on fully-patched hosts.
+                epoch = re.search(r"/Date\((\d+)\)/", str(installed_on))
+                if epoch:
                     try:
-                        dt = datetime.strptime(
-                            installed_on[:19], fmt[: len(installed_on)]
-                        )
-                        break
+                        dt = datetime.fromtimestamp(int(epoch.group(1)) / 1000)
                     except Exception:
-                        continue
+                        dt = None
                 if dt is None:
-                    # Try parsing the year from the string directly
-                    m = re.search(r"(\d{4})", installed_on)
-                    if m:
-                        dt = datetime(int(m.group(1)), 1, 1)
+                    for cand in (str(installed_on), str(installed_on)[:19]):
+                        for fmt in (
+                            "%m/%d/%Y %I:%M:%S %p",
+                            "%Y-%m-%dT%H:%M:%S",
+                            "%m/%d/%Y %H:%M:%S",
+                            "%m/%d/%Y",
+                        ):
+                            try:
+                                dt = datetime.strptime(cand, fmt)
+                                break
+                            except Exception:
+                                continue
+                        if dt:
+                            break
+                # No year-only fallback: if the date cannot be parsed, skip rather
+                # than fabricate a Jan-1 date and accuse on non-evidence.
 
                 if dt:
                     age_days = (datetime.now() - dt).days
@@ -559,7 +575,11 @@ def check_local_accounts(findings: List[Dict]) -> None:
         admins = admin_raw if isinstance(admin_raw, list) else [admin_raw]
         for a in admins:
             if isinstance(a, dict) and a.get("Name"):
-                admin_names.add(str(a["Name"]).lower())
+                # Get-LocalGroupMember returns "MACHINE\user" / "DOMAIN\user",
+                # but Get-LocalUser returns the bare "user". Compare on the
+                # trailing component or the membership test never matched and the
+                # excessive-admins check was dead code (count always 0).
+                admin_names.add(str(a["Name"]).split("\\")[-1].lower())
 
     # More than 2 local admins is suspicious
     local_admin_count = sum(

@@ -109,9 +109,11 @@ RANSOM_EXTENSIONS: Set[str] = {
     ".arena",
     ".cezar",
     ".cmb",
-    ".java",
     ".adobe",
-    ".com",
+    # NOTE: .java (source files), .com (DOS executables incl. System32 chcp.com/
+    # more.com/tree.com) and .mp3 (music) were removed — matching them by
+    # extension alone fired a guaranteed CRITICAL on ordinary machines. The
+    # long-defunct TeslaCrypt variants that reused them are covered by YARA.
     # Phobos
     ".phobos",
     # Netwalker
@@ -142,7 +144,6 @@ RANSOM_EXTENSIONS: Set[str] = {
     ".xxx",
     ".ttt",
     ".micro",
-    ".mp3",
     ".fun",
     ".gws",
     ".btc",
@@ -151,9 +152,17 @@ RANSOM_EXTENSIONS: Set[str] = {
     ".harasom",
 }
 
+# Extensions are matched against `Path.suffix.lower()`, so normalize the whole
+# set to lowercase once. Without this the mixed-case entries above (.RYK, .Clop,
+# .XRNT, .XTBL, .UCCU) could NEVER match — Ryuk/Cl0p-encrypted files walked
+# straight past the scanner.
+RANSOM_EXTENSIONS = {e.lower() for e in RANSOM_EXTENSIONS}
+
 # ── Known ransom note filenames ───────────────────────────────────────────────
 RANSOM_NOTE_NAMES: Set[str] = {
-    "readme.txt",
+    # "readme.txt" intentionally omitted: it is one of the most common benign
+    # filenames (archives, installers, source trees) and matching it fired a
+    # CRITICAL on ordinary Downloads folders. Distinctive note names only.
     "read_me.txt",
     "read_me.html",
     "decrypt_instructions.txt",
