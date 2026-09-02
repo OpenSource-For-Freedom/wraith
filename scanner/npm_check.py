@@ -661,6 +661,9 @@ _KNOWN_LEGITIMATE_SIMILARS: frozenset = frozenset(
 )
 
 
+_POPULAR_LOWER = {p.lower() for p in POPULAR_PACKAGES}
+
+
 def _is_typosquat(name: str) -> Tuple[bool, str]:
     # Scoped packages (@scope/name) provide namespace isolation. Stripping the
     # scope prefix before comparison causes false positives — e.g. @babel/core
@@ -674,12 +677,33 @@ def _is_typosquat(name: str) -> Tuple[bool, str]:
     if clean in _KNOWN_LEGITIMATE_SIMILARS:
         return False, ""
 
+    # A package that IS itself a known-popular package cannot be a typosquat of
+    # another one. Without this guard, express (Levenshtein 2 from cypress),
+    # preact (1 from react), nest (1 from next) and other hugely-popular real
+    # dependencies were flagged HIGH as typosquats of their neighbours.
+    if clean in _POPULAR_LOWER:
+        return False, ""
+
     for popular in POPULAR_PACKAGES:
         dist = _levenshtein(clean, popular.lower())
         ratio = dist / max(len(clean), len(popular))
         if 0 < dist <= 2 and ratio < 0.4 and clean != popular.lower():
             return True, popular
     return False, ""
+
+
+_SEMVER_TOKEN_RE = re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-]+)?")
+
+
+def _version_matches(declared: str, bad_versions) -> bool:
+    """True if a known-bad version exactly equals a semver token in the declared
+    version/range. Exact-token, NOT raw substring: `"7.5.1" in "7.5.10"` was a
+    substring match that flagged the *patched* 7.5.10 as compromised. Falls back
+    to matching everything only for the explicit "all" sentinel."""
+    if "all" in bad_versions:
+        return True
+    tokens = set(_SEMVER_TOKEN_RE.findall(declared or ""))
+    return any(v in tokens for v in bad_versions)
 
 
 def _check_package_json(pkg_json_path: str) -> List[Dict]:
@@ -707,7 +731,7 @@ def _check_package_json(pkg_json_path: str) -> List[Dict]:
         if dep_lower in COMPROMISED_PACKAGES:
             info = COMPROMISED_PACKAGES[dep_lower]
             versions = info.get("versions", ["all"])
-            if "all" in versions or any(v in ver for v in versions):
+            if _version_matches(ver, versions):
                 findings.append(
                     {
                         "title": f"Compromised dependency: {dep}@{ver}",
@@ -822,7 +846,7 @@ def scan_npm_global_list() -> List[Dict]:
             if lower in COMPROMISED_PACKAGES:
                 pkg_info = COMPROMISED_PACKAGES[lower]
                 versions = pkg_info.get("versions", ["all"])
-                if "all" in versions or any(v in ver for v in versions):
+                if _version_matches(ver, versions):
                     findings.append(
                         {
                             "title": f"Compromised global package: {pkg_name}@{ver}",

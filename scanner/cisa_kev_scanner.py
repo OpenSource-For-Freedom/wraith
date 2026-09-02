@@ -76,6 +76,27 @@ WINDOWS_PRODUCTS: Set[str] = {
     "Windows Server",
     "Update Notification Manager",
     "Multiple Products",
+    # Core kernel/OS components present on EVERY Windows host. CISA lists these
+    # under these exact product strings, and their omission silently dropped a
+    # whole class of actively-exploited Windows CVEs (e.g. CVE-2023-28252, the
+    # ransomware-linked CLFS zero-day) at the `product not in WINDOWS_PRODUCTS`
+    # gate. Safe to add without a host-presence check because they always exist;
+    # the KB / ransomware / legacy-year gates below still suppress noise.
+    "Windows Common Log File System Driver",
+    "Windows CLFS Driver",
+    "Windows Kernel",
+    "Windows Kernel-Mode Driver",
+    "Windows MSHTML Platform",
+    "Windows Ancillary Function Driver for WinSock",
+    "Windows Win32k",
+    "Windows Installer",
+    "Windows SmartScreen",
+    "Windows Cloud Files Mini Filter Driver",
+    "Windows Error Reporting Service",
+    "Windows Graphics Component",
+    "Windows OLE",
+    "Windows Scripting Engine",
+    "Scripting Engine",
 }
 
 # Products that have been removed from modern Windows (Win10 1903+ / Win11).

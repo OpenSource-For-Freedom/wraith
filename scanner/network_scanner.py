@@ -56,6 +56,16 @@ C2_PORTS = {
     9030,  # Tor default
 }
 
+# Ports in C2_PORTS that also carry heavy *legitimate* traffic (alt-HTTP, HTTPS
+# proxies, Tor relays). Per the note on 8080/8443/8888 above, these must only be
+# treated as C2 when paired with a suspicious process — the suspicious-outbound
+# check already covers that case. Flagging them for *any* process turns every
+# browser hit to an ":8443" API or dev server on ":8080" into a HIGH/CRITICAL
+# false positive.
+AMBIGUOUS_C2_PORTS = {8080, 8443, 8888, 9001, 9030}
+# Ports that are unambiguous RAT/backdoor indicators regardless of process.
+UNAMBIGUOUS_C2_PORTS = C2_PORTS - AMBIGUOUS_C2_PORTS
+
 SUSPICIOUS_PROCESS_NAMES = {
     "powershell",
     "powershell_ise",
@@ -237,7 +247,9 @@ def scan_connections(findings: List[Dict], pid_map: Dict[int, str]) -> None:
         proc_name = pid_map.get(pid, "unknown").lower()
 
         # ── Suspicious C2 listening ports ────────────────────────────────
-        if state.lower() in ("listen", "bound") and local_port in C2_PORTS:
+        # Unambiguous RAT/backdoor ports only — listening on :8080 / :8443 is
+        # ordinary for dev servers and proxies and must not be a CRITICAL.
+        if state.lower() in ("listen", "bound") and local_port in UNAMBIGUOUS_C2_PORTS:
             if proc_name not in TRUSTED_LISTENER_PROCESSES:
                 findings.append(
                     {
@@ -289,7 +301,10 @@ def scan_connections(findings: List[Dict], pid_map: Dict[int, str]) -> None:
                 )
 
         # ── Connections to C2 ports from any process ──────────────────────
-        if remote_port in C2_PORTS and not _is_private(remote_ip):
+        # Only the unambiguous RAT/backdoor ports fire for any process; the
+        # alt-HTTP/proxy/Tor ports (8080/8443/8888/9001/9030) are handled by the
+        # suspicious-outbound check above and must not flag ordinary web traffic.
+        if remote_port in UNAMBIGUOUS_C2_PORTS and not _is_private(remote_ip):
             findings.append(
                 {
                     "title": f"C2 Port Connection: {proc_name} → {remote_ip}:{remote_port}",
@@ -334,8 +349,13 @@ Get-NetTCPConnection -State Listen |
             addr = str(entry.get("LocalAddress", ""))
             proc_name = pid_map.get(pid, "unknown").lower()
 
-            # Bind-shell / RAT ports
-            if port in C2_PORTS and proc_name not in TRUSTED_LISTENER_PROCESSES:
+            # Bind-shell / RAT ports. Use the unambiguous set only: a dev server
+            # or Java app listening on :8080 / :8443 is not a bind shell, and the
+            # all-interface-listener block below already covers odd high ports.
+            if (
+                port in UNAMBIGUOUS_C2_PORTS
+                and proc_name not in TRUSTED_LISTENER_PROCESSES
+            ):
                 sev = "CRITICAL"
                 reason = (
                     f"Port {port} is a well-known RAT/backdoor port. "
@@ -411,7 +431,13 @@ def scan_hosts_file(findings: List[Dict]) -> None:
         for hostname in hostnames:
             hostname_lower = hostname.lower()
             for sensitive in SENSITIVE_HOSTS:
-                if sensitive in hostname_lower:
+                # Exact host or a subdomain of it — NOT an unanchored substring.
+                # Substring matching flagged benign internal names like
+                # "windows.company.local" (contains "windows.com") as hosts-file
+                # tampering.
+                if hostname_lower == sensitive or hostname_lower.endswith(
+                    "." + sensitive
+                ):
                     # Redirecting Windows Update / Microsoft / security domains = CRITICAL
                     is_loopback = ip in ("127.0.0.1", "0.0.0.0", "::1")
                     sev = "HIGH" if is_loopback else "CRITICAL"
