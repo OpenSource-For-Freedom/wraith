@@ -20,8 +20,8 @@ Recommended minimum: **Windows 10 21H1 (build 19043)**.
 
 ## Installation
 
-### Option A — START.bat (easiest)
-Download the release ZIP, extract, and double-click `START.bat`. It will:
+### Option A — LAUNCH.bat (easiest)
+Download the release ZIP, extract, and double-click `LAUNCH.bat`. It will:
 1. Detect Python — install via `winget` if missing (see note below)
 2. Create `.venv` and install all scanner dependencies
 3. Launch `WRAITH.exe` (runtime is bundled — no .NET SDK needed)
@@ -59,7 +59,7 @@ Requires .NET 8 SDK — [download here](https://dotnet.microsoft.com/download/do
 winget --version
 ```
 
-**If it's missing on your build**, install the [App Installer package from the Microsoft Store](https://apps.microsoft.com/detail/9NBLGGH4NNS1) or install Python manually (Option B above). `START.bat` will fall back gracefully if winget is absent — it will print a message and pause so you can install Python yourself.
+**If it's missing on your build**, install the [App Installer package from the Microsoft Store](https://apps.microsoft.com/detail/9NBLGGH4NNS1) or install Python manually (Option B above). `LAUNCH.bat` will fall back gracefully if winget is absent — it will print a message and pause so you can install Python yourself.
 
 ---
 
